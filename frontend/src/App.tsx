@@ -547,10 +547,10 @@ function Planner() {
       )
       setRouteAlts(alts)
       setChosenAlt(0)
-      if (alts.length === 1) setShareMsg('No genuinely different corridor exists for this trip')
+      if (alts.length === 1) setShareMsg('No genuinely different route exists for this trip')
       setTimeout(() => setShareMsg(null), 3000)
     } catch {
-      setShareMsg('Could not fetch other corridors right now')
+      setShareMsg('Could not fetch other routes right now')
       setTimeout(() => setShareMsg(null), 2500)
     }
   }
@@ -636,9 +636,11 @@ function Planner() {
         <button className="unit-toggle" onClick={toggleUnits} title="Switch units">
           {units === 'mi' ? 'mi · °F' : 'km · °C'}
         </button>
-        <span className={`api-chip api-chip--${apiStatus}`}>
-          backend: {apiStatus === 'checking' ? 'checking…' : apiStatus === 'ok' ? 'connected' : 'unreachable'}
-        </span>
+        {/* Only speak up when something's wrong - "backend: connected" was
+            developer talk taking up header space on every visit. */}
+        {apiStatus === 'down' && (
+          <span className="api-chip api-chip--down">can't reach the planner - it may be waking up</span>
+        )}
       </header>
       <div className="app-body">
         <aside className="panel panel-left">
@@ -1024,12 +1026,12 @@ function Planner() {
               <div>
                 {!routeAlts && (
                   <button className="link-btn" style={{ marginLeft: 0 }} onClick={handleCompareRoutes}>
-                    compare other corridors →
+                    see other routes →
                   </button>
                 )}
                 {routeAlts && routeAlts.length > 1 && (
                   <div>
-                    <div className="row-label">Corridors</div>
+                    <div className="row-label">Routes</div>
                     <div className="recents" style={{ marginTop: 0 }}>
                       {routeAlts.map((alt, i) => (
                         <button
@@ -1038,7 +1040,7 @@ function Planner() {
                           onClick={() => handleChooseAlt(i)}
                           disabled={loading}
                         >
-                          {i === 0 ? 'direct' : `alt ${i}`} · {dist(alt.distance_mi)} ·{' '}
+                          {String.fromCharCode(65 + i)} · {dist(alt.distance_mi)} ·{' '}
                           {Math.floor(alt.duration_min / 60)}h{alt.duration_min % 60}
                         </button>
                       ))}
