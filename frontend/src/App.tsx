@@ -964,7 +964,10 @@ function Planner() {
           {plan && plan.rate_limited && plan.distance_mi === 0 && (
             <div className="verdict verdict-bad">
               <div className="status">⚠ Planning couldn't run</div>
-              {plan.note && <div className="sub note">{plan.note}</div>}
+              <div className="sub note">
+                The routing provider's usage limit is used up right now. Nothing got planned - try again in a little
+                while.
+              </div>
             </div>
           )}
 
