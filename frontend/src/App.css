@@ -1,15 +1,21 @@
 :root {
-  --page: #f9f9f7;
-  --card: #fcfcfb;
-  --ink: #0b0b0b;
-  --ink2: #52514e;
-  --muted: #898781;
-  --hair: #e1e0d9;
-  --go-green: #008300;
-  --go-text: #006300;
-  --sc-blue: #2a78d6;
-  --ccs-orange: #eb6834;
-  --warn: #fab219;
+  /* Pale eucalyptus-asphalt: cool gray-greens from the roadside, not the
+     default warm cream. Charge-state colors (green/amber/red) are reserved
+     for battery meaning and never decorate anything else. */
+  --page: #eef0ea;
+  --card: #ffffff;
+  --ink: #191b16;
+  --ink2: #545a4e;
+  --muted: #879080;
+  --hair: #d9ddd1;
+  --go-green: #1e7a34;
+  --go-text: #1b6a2f;
+  --amber-text: #9a6b00;
+  --reserve-red: #b23b3b;
+  --sc-blue: #2a6fc9;
+  --ccs-orange: #e2622b;
+  --warn: #e5a916;
+  --mono: 'Overpass Mono', ui-monospace, 'SF Mono', monospace;
 }
 
 .app-root {
@@ -47,8 +53,8 @@
 
 .logo-word {
   font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
 .tag {
@@ -297,11 +303,11 @@
 }
 
 .row-label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   color: var(--ink2);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.09em;
   margin-bottom: 8px;
 }
 
@@ -312,9 +318,10 @@
 }
 
 .pct-value {
+  font-family: var(--mono);
   font-size: 15px;
   font-weight: 700;
-  width: 44px;
+  width: 48px;
 }
 
 .battery-row input[type='range'] {
@@ -328,7 +335,8 @@
   border: 1px solid var(--hair);
   border-radius: 8px;
   font-size: 14px;
-  font-family: inherit;
+  font-weight: 600;
+  font-family: var(--mono);
 }
 
 .range-unit {
@@ -460,15 +468,71 @@
 }
 
 .verdict .big {
-  font-size: 28px;
+  font-family: var(--mono);
+  font-size: 27px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
 .verdict .big small {
-  font-size: 14px;
+  display: block;
+  font-family: 'Overpass', system-ui, sans-serif;
+  font-size: 13.5px;
   font-weight: 500;
   color: var(--ink2);
+  margin-top: 2px;
+}
+
+/* The arrival gauge - a state-of-charge bar straight from the instrument
+   cluster. Hatched zone = your reserve floor; the fill stops where the
+   plan says you'll arrive. This is the product's whole promise drawn as
+   the instrument it comes from. */
+.gauge {
+  margin: 12px 0 4px;
+}
+
+.gauge-track {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--hair);
+  overflow: hidden;
+}
+
+.gauge-reserve {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(178, 59, 59, 0.35) 0 3px,
+    transparent 3px 7px
+  );
+}
+
+.gauge-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 7px 0 0 7px;
+  background: var(--go-green);
+  transition: width 0.5s ease;
+}
+
+.gauge-fill.low {
+  background: var(--warn);
+}
+
+.gauge-fill.empty {
+  background: var(--reserve-red);
+}
+
+.gauge-scale {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 4px;
 }
 
 .verdict .sub {

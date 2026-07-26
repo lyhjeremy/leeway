@@ -198,7 +198,7 @@ function Planner() {
     }
     // A cleared number input reads as 0, which the backend (rightly) refuses.
     if (!Number.isFinite(fullRangeMi) || fullRangeMi < 50 || fullRangeMi > 600) {
-      setError("Enter your car's real 100% range first - somewhere between 50 and 600 miles.")
+      setError("Enter your car's real 100% range first (between 50 and 600 miles).")
       return
     }
     setLoading(true)
@@ -436,13 +436,29 @@ function Planner() {
                   {plan.arrival_pct < 0
                     ? `About ${Math.abs(Math.round(plan.leeway_mi))} mi short`
                     : `Arrive at ${plan.arrival_pct}%`}{' '}
-                  <small>{plan.leeway_mi >= 0 ? `· ${plan.leeway_mi} mi of leeway` : ''}</small>
+                  <small>{plan.leeway_mi >= 0 ? `${plan.leeway_mi} mi of leeway` : ''}</small>
+                </div>
+                <div className="gauge">
+                  <div className="gauge-track">
+                    <div
+                      className={`gauge-fill${
+                        plan.arrival_pct < 0 ? ' empty' : plan.arrival_pct < plan.reserve_floor_pct ? ' low' : ''
+                      }`}
+                      style={{ width: `${Math.min(Math.max(plan.arrival_pct, 3), 100)}%` }}
+                    />
+                    <div className="gauge-reserve" style={{ width: `${plan.reserve_floor_pct}%` }} />
+                  </div>
+                  <div className="gauge-scale">
+                    <span>0%</span>
+                    <span>reserve {plan.reserve_floor_pct}%</span>
+                    <span>100%</span>
+                  </div>
                 </div>
                 <div className="sub">
                   {plan.distance_mi} mi · {plan.stops.length} stop{plan.stops.length === 1 ? '' : 's'} ·{' '}
                   {Math.round(plan.duration_min / 60)} h {plan.duration_min % 60} min total
                 </div>
-                {plan.weather && <div className="sub">Weather included: {plan.weather.summary}</div>}
+                {plan.weather && <div className="sub">Range adjusted for {plan.weather.summary}</div>}
                 {plan.safety_flags.length > 0 && (
                   <div className="sub safety-flag">
                     ⚠ {plan.safety_flags[0].description}
@@ -461,7 +477,7 @@ function Planner() {
                       <div className="d">
                         {s.network} · arrive {s.arrive_pct}% → charge to {s.charge_to_pct}%
                         {s.charge_time_min ? ` · ${s.charge_time_min} min` : ''}
-                        {!s.reachable && ' · may not be reachable, verify before departure'}
+                        {!s.reachable && ' · may not be reachable, double-check before you leave'}
                       </div>
                     </div>
                     <div className="leg-actions">

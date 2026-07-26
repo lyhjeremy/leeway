@@ -23,7 +23,7 @@ export default function CarSetup({ currentRangeMi, onSave, onClose }: Props) {
           Find your real range
         </div>
         <p className="modal-lede">
-          Look at your car's screen right now and copy over what it says — that's all we need.
+          Copy over what your car's screen shows right now. That's all we need.
         </p>
 
         <div className="modal-inputs">

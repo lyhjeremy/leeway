@@ -245,9 +245,9 @@ async def plan_trip(
 
         if chosen is None:
             note = (
-                f"No real-verified reachable fast-charging station (>={MIN_CHARGING_KW}kW) found within "
-                f"{SEARCH_RADII_MI[-1]} miles of where the battery would hit reserve - "
-                "this plan is genuinely incomplete past this point, not just approximate."
+                f"No fast charger ({MIN_CHARGING_KW}kW or more) checked out as reachable within "
+                f"{SEARCH_RADII_MI[-1]} miles of where the battery would hit reserve. "
+                "Treat everything past that point as unplanned."
             )
             leg_geometries.append(remaining["geometry"])
             leg_elevations.append(remaining["elevations_m"])

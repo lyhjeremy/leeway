@@ -2,31 +2,45 @@
 
 *The second opinion before you leave.*
 
-A trip planner for EVs whose batteries have lost range with age — built
+A trip planner for EVs whose batteries have lost range with age, built
 around a real 2021 Tesla Model 3 Standard Range Plus (205 mi at 100%, down
-from 263 new). Custom range input, safety-aware routing, and voice-driven
-stop search. Full product plan: `../LEEWAY_PRODUCT_PLAN.md` (one level up,
-not in this repo — this repo is the codebase only).
+from 263 new). You tell it your car's actual range, it tells you what will
+really be left in the battery when you arrive, with charging stops it has
+verified against real routing data rather than guessed at. Full product
+plan: `../LEEWAY_PRODUCT_PLAN.md` (one level up, not in this repo — this
+repo is the codebase only).
 
-**Live:** frontend at https://lyhjeremy.github.io/leeway/ · backend health at
-`https://leeway-api.onrender.com/api/health` (pending Render setup, see
-`backend/README.md`).
+**Live:** https://lyhjeremy.github.io/leeway/ · backend health at
+`https://leeway-api.onrender.com/api/health`.
 
-## Status
+## What it does
 
-**Stage 0 (infrastructure) — in progress.** Frontend renders a hardcoded
-LA → SF route on a real map; backend is a bare health-check endpoint, coded
-and tested locally, pending its one-time Render dashboard setup. No real
-routing, range math, or feature logic yet — that's Stage 1.
+- Plans charging stops with elevation-aware range math (a proportional
+  slice of trip-wide climb data called I-5's Grapevine "reachable" when a
+  real per-leg check proved it wasn't — every candidate stop is verified
+  with a real routing call before it's accepted).
+- Adjusts range for live weather (temperature, headwind) at plan time.
+- Flags steep descents and sun glare along the route, with more safety
+  flags planned.
+- Finds stops by voice or text ("a Starbucks with a drive-through that
+  won't add much time") and verifies each candidate's real detour.
+- Logs predicted vs. actual arrival per trip, on your device, and shows
+  the running record on the accuracy page.
+- Works as an installable PWA with a screenshot-friendly trip card for
+  the drive itself.
 
 ## Structure
 
 - `frontend/` — React + Vite + TS, MapLibre GL, deployed to GitHub Pages.
-- `backend/` — FastAPI, deployed to Render (Docker runtime, free web
-  service) — see `backend/README.md` for why it's not on Hugging Face Spaces.
-- `.github/workflows/pages.yml` — builds+deploys the frontend on every push
-  to `frontend/**`. Backend deploys via Render's own GitHub integration
-  instead of a custom workflow (`render.yaml` at the repo root).
+- `backend/` — FastAPI on Render (Docker runtime, free tier) — see
+  `backend/README.md` for why it's not on Hugging Face Spaces.
+- `.github/workflows/pages.yml` — builds and deploys the frontend on every
+  push to `frontend/**`. The backend deploys via Render's own GitHub
+  integration (`render.yaml` at the repo root).
+
+Data sources: OpenRouteService (routing, geocoding, elevation), Open Charge
+Map (stations), Open-Meteo (weather), Overpass/OSM (POI search), Gemini
+(voice query parsing). Coverage is California for now.
 
 ## Local dev
 

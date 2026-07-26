@@ -1,5 +1,7 @@
 :root {
-  font: 16px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Overpass descends from US Highway Gothic - the lettering on the road
+     signs this product plans trips around. Mono variant carries the numbers. */
+  font: 15.5px/1.45 'Overpass', system-ui, -apple-system, 'Segoe UI', sans-serif;
   color-scheme: light;
 }
 

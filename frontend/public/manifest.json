@@ -1,16 +1,36 @@
 {
-  "name": "Leeway — the second opinion before you leave",
+  "name": "Leeway \u2014 the second opinion before you leave",
   "short_name": "Leeway",
   "description": "A trip planner for EVs with degraded batteries. Real range math, real charging stops, real safety flags.",
   "start_url": "/leeway/",
   "scope": "/leeway/",
   "display": "standalone",
-  "background_color": "#f9f9f7",
-  "theme_color": "#f9f9f7",
+  "background_color": "#eef0ea",
+  "theme_color": "#eef0ea",
   "icons": [
-    { "src": "/leeway/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/leeway/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/leeway/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/leeway/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/leeway/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/leeway/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/leeway/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/leeway/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

@@ -26,9 +26,9 @@ export default function AccuracyPage() {
       <div className="accuracy-body">
         <h1>Your accuracy record</h1>
         <p>
-          This is <strong>this browser's own history</strong>, not a shared or crowd-sourced record - Leeway doesn't
-          have a backend database yet, so nothing here leaves your device. Every trip you've logged as "how did it
-          go?" shows up here, predicted next to actual, with no favorable rounding.
+          Everything on this page lives in <strong>this browser only</strong>. Leeway has no account system and no
+          database, so nothing leaves your device. Every trip you've answered "how did it go?" for shows up here,
+          predicted next to actual, with no favorable rounding.
         </p>
         {trips.length === 0 && (
           <p className="muted">
