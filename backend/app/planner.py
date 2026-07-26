@@ -92,6 +92,8 @@ async def plan_trip(
     reserve_mi: float = 30.0,
     charge_to_pct: float = 80.0,
     stop_mode: str = "fewest_stops",
+    avoid_tolls: bool = False,
+    avoid_highways: bool = False,
 ) -> dict:
     stops_out = []
     leg_geometries = []
@@ -103,7 +105,7 @@ async def plan_trip(
     note = None
 
     for _ in range(MAX_STOPS + 1):
-        remaining = await providers.directions(current_start, destination)
+        remaining = await providers.directions(current_start, destination, avoid_tolls, avoid_highways)
         estimate = range_model.estimate_arrival(
             full_range_mi, current_pct, remaining["distance_mi"], remaining["highway_fraction"],
             remaining["ascent_ft"], remaining["descent_ft"], reserve_pct, reserve_mi,
@@ -130,7 +132,7 @@ async def plan_trip(
             ranked = _rank_candidates(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, stop_mode, stations)
 
             for candidate in ranked[:MAX_CANDIDATES_VERIFIED_PER_RADIUS]:
-                leg_to_stop = await providers.directions(current_start, (candidate["lat"], candidate["lon"]))
+                leg_to_stop = await providers.directions(current_start, (candidate["lat"], candidate["lon"]), avoid_tolls, avoid_highways)
                 leg_estimate = range_model.estimate_arrival(
                     full_range_mi, current_pct, leg_to_stop["distance_mi"], leg_to_stop["highway_fraction"],
                     leg_to_stop["ascent_ft"], leg_to_stop["descent_ft"], reserve_pct, reserve_mi,

@@ -18,6 +18,8 @@ export async function planTrip(params: {
   reserveMi?: number
   chargeToPct?: number
   stopMode?: StopMode
+  avoidTolls?: boolean
+  avoidHighways?: boolean
 }): Promise<PlanResponse> {
   const res = await fetch(`${API_BASE}/api/plan`, {
     method: 'POST',
@@ -31,6 +33,8 @@ export async function planTrip(params: {
       reserve_mi: params.reserveMi ?? 30,
       charge_to_pct: params.chargeToPct ?? 80,
       stop_mode: params.stopMode ?? 'fewest_stops',
+      avoid_tolls: params.avoidTolls ?? false,
+      avoid_highways: params.avoidHighways ?? false,
     }),
   })
   if (!res.ok) {

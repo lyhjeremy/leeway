@@ -73,21 +73,37 @@ def _highway_fraction_from_extras(extras: dict, n_coords: int) -> float | None:
         return None
 
 
-async def directions(origin: tuple[float, float], destination: tuple[float, float]) -> dict:
+async def directions(
+    origin: tuple[float, float],
+    destination: tuple[float, float],
+    avoid_tolls: bool = False,
+    avoid_highways: bool = False,
+) -> dict:
     """origin/destination are (lat, lon). Returns distance_mi, duration_min,
-    ascent_ft, descent_ft, highway_fraction, and geometry as [(lon, lat), ...]."""
+    ascent_ft, descent_ft, highway_fraction, geometry as [(lon, lat), ...],
+    and elevations_m (parallel array, meters per vertex)."""
     _require_key()
     olat, olon = origin
     dlat, dlon = destination
+    avoid_features = []
+    if avoid_tolls:
+        avoid_features.append("tollways")
+    if avoid_highways:
+        avoid_features.append("highways")
+
+    body = {
+        "coordinates": [[olon, olat], [dlon, dlat]],
+        "elevation": True,
+        "extra_info": ["waycategory"],
+    }
+    if avoid_features:
+        body["options"] = {"avoid_features": avoid_features}
+
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(
             f"{ORS_BASE}/v2/directions/driving-car/geojson",
             headers={"Authorization": ORS_API_KEY, "Content-Type": "application/json"},
-            json={
-                "coordinates": [[olon, olat], [dlon, dlat]],
-                "elevation": True,
-                "extra_info": ["waycategory"],
-            },
+            json=body,
         )
         resp.raise_for_status()
         data = resp.json()

@@ -45,6 +45,8 @@ function Planner() {
   const [batteryPct, setBatteryPct] = useState(68)
   const [fullRangeMi, setFullRangeMi] = useState<number>(() => loadFullRangeMi() ?? 205)
   const [stopMode, setStopMode] = useState<StopMode>('fewest_stops')
+  const [avoidTolls, setAvoidTolls] = useState(false)
+  const [avoidHighways, setAvoidHighways] = useState(false)
   const [plan, setPlan] = useState<PlanResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -136,6 +138,8 @@ function Planner() {
         batteryPct,
         fullRangeMi,
         stopMode,
+        avoidTolls,
+        avoidHighways,
       })
       setPlan(result)
       saveRecentTrip({ origin, destination })
@@ -228,6 +232,27 @@ function Planner() {
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="toggles">
+            <label className="tog">
+              <span>Allow toll roads</span>
+              <input
+                type="checkbox"
+                className="switch"
+                checked={!avoidTolls}
+                onChange={(e) => setAvoidTolls(!e.target.checked)}
+              />
+            </label>
+            <label className="tog">
+              <span>Avoid highways</span>
+              <input
+                type="checkbox"
+                className="switch"
+                checked={avoidHighways}
+                onChange={(e) => setAvoidHighways(e.target.checked)}
+              />
+            </label>
           </div>
 
           <button className="plan-btn" onClick={handlePlan} disabled={loading}>

@@ -10,7 +10,7 @@ from .providers import OCMNotConfigured, ORSNotConfigured
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.2.2"
+VERSION = "0.3.0"
 
 app = FastAPI(title="Leeway API")
 
@@ -60,6 +60,8 @@ class PlanRequest(BaseModel):
     reserve_mi: float = 30.0
     charge_to_pct: float = 80.0
     stop_mode: str = "fewest_stops"  # fewest_stops | fastest_trip | best_amenities
+    avoid_tolls: bool = False  # tolls allowed by default, per the product plan
+    avoid_highways: bool = False
 
 
 @app.post("/api/plan")
@@ -74,6 +76,8 @@ async def plan(req: PlanRequest):
             reserve_mi=req.reserve_mi,
             charge_to_pct=req.charge_to_pct,
             stop_mode=req.stop_mode,
+            avoid_tolls=req.avoid_tolls,
+            avoid_highways=req.avoid_highways,
         )
     except ORSNotConfigured:
         raise HTTPException(503, "Routing isn't configured yet (ORS_API_KEY missing).")
