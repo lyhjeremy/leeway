@@ -176,6 +176,11 @@ async def _safe_directions(origin, destination, avoid_tolls, avoid_highways, avo
         try:
             return await providers.directions(origin, destination, avoid_tolls, avoid_highways, avoid_polygons)
         except httpx.HTTPStatusError as e:
+            # 403 is ORS's daily-quota exhaustion ("Quota exceeded") - like a
+            # 429 it means "the route probably exists, stop asking", except
+            # waiting a few seconds won't help, so no retry.
+            if e.response.status_code == 403:
+                raise RateLimited()
             if e.response.status_code != 429:
                 return None
             if delay is None:
