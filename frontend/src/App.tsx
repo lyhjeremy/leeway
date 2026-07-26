@@ -212,7 +212,14 @@ function Planner() {
         const el = document.createElement('div')
         el.className = 'pin-hazard'
         attachPopup(el, flag.lon, flag.lat, ['Heads up', flag.description])
-        markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([flag.lon, flag.lat]).addTo(map))
+        // anchor bottom: the triangle's tip touches the flagged spot and its
+        // body sits above it, so it can't cover (and steal clicks from) a
+        // charging-stop pin at the same location - which really happens: the
+        // unprotected-left flags at the Castaic exit sit exactly on the
+        // Castaic charger.
+        markersRef.current.push(
+          new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([flag.lon, flag.lat]).addTo(map),
+        )
       }
 
       const bounds = plan.geometry.reduce(
