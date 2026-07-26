@@ -25,6 +25,15 @@ export interface ChargingStop {
 
 export type StopMode = 'fewest_stops' | 'fastest_trip' | 'best_amenities'
 
+export interface SafetyFlag {
+  type: 'steep_descent' | 'sun_glare'
+  description: string
+  lat?: number
+  lon?: number
+  length_mi?: number
+  grade_pct?: number
+}
+
 export interface WeatherInfo {
   adjustment: number
   summary: string
@@ -43,4 +52,5 @@ export interface PlanResponse {
   stops: ChargingStop[]
   note: string | null
   weather: WeatherInfo | null
+  safety_flags: SafetyFlag[]
 }

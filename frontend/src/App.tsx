@@ -134,6 +134,13 @@ function Planner() {
         el.className = stop.is_supercharger ? 'pin pin-supercharger' : 'pin pin-ccs'
         markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([stop.lon, stop.lat]).addTo(map))
       }
+      for (const flag of plan.safety_flags) {
+        if (flag.lat == null || flag.lon == null) continue
+        const el = document.createElement('div')
+        el.className = 'pin-hazard'
+        el.title = flag.description
+        markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([flag.lon, flag.lat]).addTo(map))
+      }
 
       const bounds = plan.geometry.reduce(
         (b, c) => b.extend(c as [number, number]),
@@ -334,6 +341,12 @@ function Planner() {
                   {Math.round(plan.duration_min / 60)} h {plan.duration_min % 60} min total
                 </div>
                 {plan.weather && <div className="sub">Weather included: {plan.weather.summary}</div>}
+                {plan.safety_flags.length > 0 && (
+                  <div className="sub safety-flag">
+                    ⚠ {plan.safety_flags[0].description}
+                    {plan.safety_flags.length > 1 && ` (+${plan.safety_flags.length - 1} more)`}
+                  </div>
+                )}
                 {plan.note && <div className="sub note">{plan.note}</div>}
               </div>
 

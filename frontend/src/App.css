@@ -351,6 +351,10 @@
   font-weight: 600;
 }
 
+.verdict .safety-flag {
+  color: #9a6b00;
+}
+
 .itin {
   display: flex;
   flex-direction: column;
@@ -615,4 +619,12 @@
 .pin-ccs {
   background: var(--ccs-orange);
   transform: rotate(45deg);
+}
+
+.pin-hazard {
+  width: 22px;
+  height: 20px;
+  background: var(--warn);
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  filter: drop-shadow(0 1px 3px rgba(11, 11, 11, 0.4));
 }

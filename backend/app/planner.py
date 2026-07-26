@@ -22,10 +22,11 @@ never decides feasibility on its own.
 """
 
 import asyncio
+from datetime import datetime, timezone
 
 import httpx
 
-from . import providers, range_model
+from . import providers, range_model, safety, sun
 from .geo import bearing_deg, cumulative_distances_mi, headwind_component_mph, nearest_route_distance_mi, point_at_distance
 
 SEARCH_RADII_MI = [15, 30, 50]  # widen if nothing pans out, before giving up
@@ -165,10 +166,12 @@ async def plan_trip(
             }] + leg2["stops"],
             "note": leg1["note"] or leg2["note"],
             "weather": leg1["weather"],
+            "safety_flags": leg1["safety_flags"] + leg2["safety_flags"],
         }
 
     stops_out = []
     leg_geometries = []
+    leg_elevations = []
     total_distance_mi = 0.0
     total_duration_min = 0.0
 
@@ -198,6 +201,7 @@ async def plan_trip(
 
         if estimate.feasible:
             leg_geometries.append(remaining["geometry"])
+            leg_elevations.append(remaining["elevations_m"])
             total_distance_mi += remaining["distance_mi"]
             total_duration_min += remaining["duration_min"]
             final_arrival_pct = estimate.arrival_pct
@@ -246,6 +250,7 @@ async def plan_trip(
                 "this plan is genuinely incomplete past this point, not just approximate."
             )
             leg_geometries.append(remaining["geometry"])
+            leg_elevations.append(remaining["elevations_m"])
             total_distance_mi += remaining["distance_mi"]
             total_duration_min += remaining["duration_min"]
             final_arrival_pct = estimate.arrival_pct
@@ -254,6 +259,7 @@ async def plan_trip(
             break
 
         leg_geometries.append(chosen_leg["geometry"])
+        leg_elevations.append(chosen_leg["elevations_m"])
         total_distance_mi += chosen_leg["distance_mi"]
         total_duration_min += chosen_leg["duration_min"]
 
@@ -286,6 +292,8 @@ async def plan_trip(
         feasible = False
 
     geometry = [pt for leg in leg_geometries for pt in leg]
+    elevations_m = [e for leg in leg_elevations for e in leg]
+    safety_flags = _find_safety_flags(origin, destination, geometry, elevations_m)
 
     return {
         "distance_mi": round(total_distance_mi, 1),
@@ -298,7 +306,28 @@ async def plan_trip(
         "stops": stops_out,
         "note": note,
         "weather": weather,  # None if the weather fetch failed - see _trip_weather
+        "safety_flags": safety_flags,
     }
+
+
+def _find_safety_flags(origin: tuple[float, float], destination: tuple[float, float],
+                        geometry: list[tuple[float, float]], elevations_m: list[float]) -> list[dict]:
+    """Steep descents (real elevation, sorted most severe first) plus one
+    sun-glare check using the trip's overall bearing and a 'departing now'
+    assumption - see safety.py and sun.py for why these two flags don't need
+    Overpass/OSM data the other five in the product plan do."""
+    if len(geometry) < 2:
+        return []
+    cum = cumulative_distances_mi(geometry)
+    flags = safety.find_steep_descents(geometry, elevations_m, cum)
+    flags.sort(key=lambda f: -(f["grade_pct"] * f["length_mi"]))
+
+    bearing = bearing_deg(origin[0], origin[1], destination[0], destination[1])
+    mid_lat, mid_lon = (origin[0] + destination[0]) / 2, (origin[1] + destination[1]) / 2
+    glare = sun.check_sun_glare(mid_lat, mid_lon, datetime.now(timezone.utc), bearing)
+    if glare:
+        flags.append(glare)
+    return flags
 
 
 def _search_point(route: dict, start_pct: float, full_range_mi: float, reserve_pct: float, reserve_mi: float, weather_adjustment: float = 0.0):
