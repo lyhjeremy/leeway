@@ -10,6 +10,7 @@ import httpx
 from .geo import FT_PER_METER, MI_PER_METER
 
 ORS_API_KEY = os.environ.get("ORS_API_KEY", "")
+OCM_API_KEY = os.environ.get("OCM_API_KEY", "")
 ORS_BASE = "https://api.openrouteservice.org"
 OCM_BASE = "https://api.openchargemap.io/v3"
 
@@ -117,11 +118,18 @@ async def directions(origin: tuple[float, float], destination: tuple[float, floa
     }
 
 
+class OCMNotConfigured(Exception):
+    pass
+
+
 async def find_charging_stations(lat: float, lon: float, radius_mi: float = 15, max_results: int = 50) -> list[dict]:
+    if not OCM_API_KEY:
+        raise OCMNotConfigured("OCM_API_KEY is not set")
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
             f"{OCM_BASE}/poi/",
             params={
+                "key": OCM_API_KEY,
                 "output": "json",
                 "latitude": lat,
                 "longitude": lon,

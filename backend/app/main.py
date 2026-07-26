@@ -5,12 +5,12 @@ from pydantic import BaseModel
 
 from . import providers
 from .planner import plan_trip
-from .providers import ORSNotConfigured
+from .providers import OCMNotConfigured, ORSNotConfigured
 
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 app = FastAPI(title="Leeway API")
 
@@ -28,7 +28,12 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": VERSION, "ors_configured": bool(providers.ORS_API_KEY)}
+    return {
+        "status": "ok",
+        "version": VERSION,
+        "ors_configured": bool(providers.ORS_API_KEY),
+        "ocm_configured": bool(providers.OCM_API_KEY),
+    }
 
 
 @app.get("/api/geocode")
@@ -72,5 +77,7 @@ async def plan(req: PlanRequest):
         )
     except ORSNotConfigured:
         raise HTTPException(503, "Routing isn't configured yet (ORS_API_KEY missing).")
+    except OCMNotConfigured:
+        raise HTTPException(503, "Charging-station lookup isn't configured yet (OCM_API_KEY missing).")
     except httpx.HTTPError as e:
         raise HTTPException(502, f"Routing/charging provider error: {e}")

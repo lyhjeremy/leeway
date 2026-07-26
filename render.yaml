@@ -7,3 +7,8 @@ services:
     plan: free
     healthCheckPath: /api/health
     autoDeployTrigger: commit
+    envVars:
+      - key: ORS_API_KEY
+        sync: false
+      - key: OCM_API_KEY
+        sync: false
