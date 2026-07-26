@@ -4,9 +4,10 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import './App.css'
 import LocationInput from './LocationInput'
 import CarSetup from './CarSetup'
+import TripCard from './TripCard'
 import AccuracyPage from './AccuracyPage'
 import { planTrip } from './api'
-import type { GeocodeResult, LatLon, PlanResponse, StopMode } from './types'
+import type { ChargingStop, GeocodeResult, LatLon, PlanResponse, StopMode } from './types'
 import { loadFullRangeMi, loadRecentTrips, saveFullRangeMi, saveRecentTrip, type RecentTrip } from './storage'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
@@ -55,6 +56,8 @@ function Planner() {
   const [excludedStationIds, setExcludedStationIds] = useState<number[]>([])
   const [forcedStop, setForcedStop] = useState<LatLon | null>(null)
   const [pickingStop, setPickingStop] = useState(false)
+  const [shareMsg, setShareMsg] = useState<string | null>(null)
+  const [showTripCard, setShowTripCard] = useState(false)
 
   useEffect(() => {
     if (!mapContainer.current) return
@@ -199,6 +202,30 @@ function Planner() {
   function clearForcedStop() {
     setForcedStop(null)
     runPlan({ excludedStationIds, forcedStop: null })
+  }
+
+  async function handleShareStop(stop: ChargingStop) {
+    // A maps link, not a "geo:" URI - the Tesla app and most nav apps
+    // register as share targets for maps links (that's the real mechanism
+    // behind "share a stop's address into the Tesla app" from the product
+    // plan), while a raw geo: URI has much weaker cross-app support.
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lon}`
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: stop.title, text: `Charging stop: ${stop.title}`, url: mapsUrl })
+        return
+      } catch {
+        // user cancelled the share sheet, or the platform rejected it - fall
+        // through to the clipboard fallback below rather than doing nothing
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(mapsUrl)
+      setShareMsg(`Copied "${stop.title}" map link`)
+    } catch {
+      setShareMsg('Could not share - long-press the map pin instead')
+    }
+    setTimeout(() => setShareMsg(null), 2500)
   }
 
   function pickRecentTrip(trip: RecentTrip) {
@@ -362,14 +389,23 @@ function Planner() {
                         {!s.reachable && ' · may not be reachable, verify before departure'}
                       </div>
                     </div>
-                    {s.id != null && (
-                      <button className="link-btn" onClick={() => handleSkipStop(s.id)} disabled={loading}>
-                        skip
+                    <div className="leg-actions">
+                      <button className="link-btn" onClick={() => handleShareStop(s)}>
+                        share
                       </button>
-                    )}
+                      {s.id != null && (
+                        <button className="link-btn" onClick={() => handleSkipStop(s.id)} disabled={loading}>
+                          skip
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
+
+              <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setShowTripCard(true)}>
+                trip card (for the drive) →
+              </button>
             </>
           )}
 
@@ -381,6 +417,16 @@ function Planner() {
       </div>
       {showCarSetup && (
         <CarSetup currentRangeMi={fullRangeMi} onSave={handleCarSetupSave} onClose={() => setShowCarSetup(false)} />
+      )}
+      {shareMsg && <div className="share-toast">{shareMsg}</div>}
+      {showTripCard && plan && origin && destination && (
+        <TripCard
+          plan={plan}
+          origin={origin}
+          destination={destination}
+          batteryPct={batteryPct}
+          onClose={() => setShowTripCard(false)}
+        />
       )}
     </div>
   )
