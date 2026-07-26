@@ -3,14 +3,16 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import providers
+from . import gemini, providers
+from .gemini import GeminiNotConfigured
 from .planner import plan_trip
 from .providers import OCMNotConfigured, ORSNotConfigured
+from .voice import VoiceSearchError, find_stops
 
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 
 app = FastAPI(title="Leeway API")
 
@@ -33,6 +35,7 @@ def health():
         "version": VERSION,
         "ors_configured": bool(providers.ORS_API_KEY),
         "ocm_configured": bool(providers.OCM_API_KEY),
+        "gemini_configured": bool(gemini.GEMINI_API_KEY),
     }
 
 
@@ -91,3 +94,23 @@ async def plan(req: PlanRequest):
         raise HTTPException(503, "Charging-station lookup isn't configured yet (OCM_API_KEY missing).")
     except httpx.HTTPError as e:
         raise HTTPException(502, f"Routing/charging provider error: {e}")
+
+
+class VoiceSearchRequest(BaseModel):
+    query: str
+    origin: LatLon
+    destination: LatLon
+
+
+@app.post("/api/voice-search")
+async def voice_search(req: VoiceSearchRequest):
+    try:
+        return await find_stops(req.query, (req.origin.lat, req.origin.lon), (req.destination.lat, req.destination.lon))
+    except GeminiNotConfigured:
+        raise HTTPException(503, "Voice search isn't configured yet (GEMINI_API_KEY missing).")
+    except ORSNotConfigured:
+        raise HTTPException(503, "Routing isn't configured yet (ORS_API_KEY missing).")
+    except VoiceSearchError as e:
+        raise HTTPException(422, str(e))
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Voice search provider error: {e}")

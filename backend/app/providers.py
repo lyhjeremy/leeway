@@ -1,10 +1,13 @@
 """Thin clients for the external data sources this backend depends on:
 OpenRouteService (geocoding + directions + elevation, needs a free API key),
 Open Charge Map (charging stations, no key needed under 250 results/call),
-and Open-Meteo (current weather, no key needed at all - confirmed via a real
-call, not assumed).
+Open-Meteo (current weather, no key needed at all - confirmed via a real
+call, not assumed), and Overpass (OSM point-of-interest search for the
+voice stop-finder, no key needed - confirmed via a real cafe search that
+returned real drive_through/brand tags).
 """
 
+import asyncio
 import os
 
 import httpx
@@ -16,6 +19,7 @@ OCM_API_KEY = os.environ.get("OCM_API_KEY", "")
 ORS_BASE = "https://api.openrouteservice.org"
 OCM_BASE = "https://api.openchargemap.io/v3"
 METEO_BASE = "https://api.open-meteo.com/v1"
+OVERPASS_BASE = "https://overpass-api.de/api/interpreter"
 
 # California bounding box - biases geocoding results since this product is
 # CA-only for now, per the product plan.
@@ -217,3 +221,54 @@ async def current_weather(lat: float, lon: float) -> dict:
         "wind_speed_mph": current["wind_speed_10m"],
         "wind_from_deg": current["wind_direction_10m"],
     }
+
+
+async def search_overpass(bbox: tuple[float, float, float, float], tag_filters: list[tuple[str, str]], max_results: int = 60) -> list[dict]:
+    """bbox is (min_lat, min_lon, max_lat, max_lon). tag_filters is a list of
+    (key, value) pairs, OR'd together (e.g. [("amenity","cafe"),("shop","coffee")]).
+    Returns real OSM tags per POI - name, brand, drive_through, opening_hours,
+    whatever exists - so the caller can filter/rank on real data instead of
+    guessing.
+
+    The public overpass-api.de instance is genuinely unreliable under load -
+    confirmed via repeated real calls returning a mix of 406, 504, and 200 for
+    the *identical* query seconds apart, with no client-side pattern (same
+    result from curl and httpx, with or without a descriptive User-Agent).
+    This is a documented characteristic of this free, shared community
+    resource, not something to engineer around client-side beyond a real
+    retry loop - so that's what this does, rather than assuming one failure
+    means the query itself is bad."""
+    min_lat, min_lon, max_lat, max_lon = bbox
+    bbox_str = f"{min_lat},{min_lon},{max_lat},{max_lon}"
+    clauses = "".join(f'node["{k}"="{v}"]({bbox_str});' for k, v in tag_filters)
+    query = f"[out:json][timeout:20];({clauses});out center {max_results};"
+
+    headers = {"User-Agent": "Leeway-EV-Trip-Planner/0.1 (github.com/lyhjeremy/leeway)"}
+    data = None
+    async with httpx.AsyncClient(timeout=25) as client:
+        for attempt in range(4):
+            resp = await client.post(OVERPASS_BASE, data={"data": query}, headers=headers)
+            if resp.status_code in (406, 429, 503, 504) and attempt < 3:
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            break
+
+    out = []
+    for el in data.get("elements", []):
+        tags = el.get("tags", {})
+        lat, lon = el.get("lat"), el.get("lon")
+        if lat is None or lon is None:
+            continue
+        out.append({
+            "id": el.get("id"),
+            "name": tags.get("name") or tags.get("brand") or "Unnamed",
+            "brand": tags.get("brand"),
+            "lat": lat,
+            "lon": lon,
+            "drive_through": tags.get("drive_through"),
+            "opening_hours": tags.get("opening_hours"),
+            "tags": tags,
+        })
+    return out

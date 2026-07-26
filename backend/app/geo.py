@@ -42,17 +42,27 @@ def point_at_distance(coords: list[tuple[float, float]], cum: list[float], targe
     return coords[-1]
 
 
-def nearest_route_distance_mi(coords: list[tuple[float, float]], cum: list[float], lat: float, lon: float) -> float:
-    """Nearest-vertex approximation of how far along the route a given point
-    projects to. Fine at this scale since ORS route geometries are already
-    densely sampled - an exact perpendicular-segment projection would be
-    marginally more accurate but isn't worth the complexity here."""
+def nearest_route_point(coords: list[tuple[float, float]], cum: list[float], lat: float, lon: float) -> tuple[float, float]:
+    """Nearest-vertex approximation. Returns (distance_along_route_mi,
+    offset_from_route_mi) - the offset is how far the point sits from the
+    route itself, used to reject POIs that fall inside a route's bounding
+    box (which can be large for a curving route) but aren't actually near
+    the road."""
     best_i, best_d = 0, float("inf")
     for i, (clon, clat) in enumerate(coords):
         d = haversine_mi(lat, lon, clat, clon)
         if d < best_d:
             best_d, best_i = d, i
-    return cum[best_i]
+    return cum[best_i], best_d
+
+
+def nearest_route_distance_mi(coords: list[tuple[float, float]], cum: list[float], lat: float, lon: float) -> float:
+    """Nearest-vertex approximation of how far along the route a given point
+    projects to. Fine at this scale since ORS route geometries are already
+    densely sampled - an exact perpendicular-segment projection would be
+    marginally more accurate but isn't worth the complexity here."""
+    dist_along, _ = nearest_route_point(coords, cum, lat, lon)
+    return dist_along
 
 
 def bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
