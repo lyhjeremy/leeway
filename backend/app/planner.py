@@ -293,8 +293,8 @@ async def plan_trip(
             remaining = await _safe_directions(current_start, destination, avoid_tolls, avoid_highways)
         except RateLimited:
             note = (
-                "The routing provider's per-minute limit interrupted planning partway - "
-                "everything up to here is real, the rest is unplanned. Try again in a minute."
+                "The routing provider's usage limit interrupted planning partway - "
+                "everything up to here is real, the rest is unplanned. Try again in a little while."
             )
             final_arrival_pct = current_pct
             final_leeway_mi = 0.0
@@ -391,8 +391,8 @@ async def plan_trip(
                     break
         except RateLimited:
             note = (
-                "The routing provider's per-minute limit interrupted planning partway - "
-                "everything up to here is real, the rest is unplanned. Try again in a minute."
+                "The routing provider's usage limit interrupted planning partway - "
+                "everything up to here is real, the rest is unplanned. Try again in a little while."
             )
             leg_geometries.append(remaining["geometry"])
             leg_elevations.append(remaining["elevations_m"])
