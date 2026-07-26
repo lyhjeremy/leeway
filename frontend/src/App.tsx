@@ -230,6 +230,11 @@ function Planner() {
   useEffect(() => {
     const map = mapRef.current
     if (!map || !plan) return
+    // A rate-limited plan can come back with no geometry at all - building
+    // map bounds from geometry[0] === undefined threw and unmounted the
+    // whole app. The verdict and note still render; the map just keeps its
+    // previous view.
+    if (plan.geometry.length < 2) return
 
     const drawRoute = () => {
       const geojson = {
