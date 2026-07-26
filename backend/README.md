@@ -31,5 +31,19 @@ Health check: `GET /api/health` — returns `{"status": "ok", "version": "..."}`
 the version string is bumped by hand on real changes so a stale deploy is
 visible immediately rather than assumed fixed.
 
-Stage 0 scope only: no routing engine, no data sources yet — this endpoint
-exists purely to prove the frontend and backend are connected end to end.
+## Stage 1: real routing
+
+`/api/geocode` and `/api/plan` proxy to OpenRouteService (routing, elevation,
+geocoding — free tier: 2,500 req/day) and Open Charge Map (charging
+stations, no key needed under 250 results/call). Set `ORS_API_KEY` as a
+Render environment variable to enable them — without it, both return a
+clear 503 rather than failing silently. `/api/plan` loops to insert *multiple*
+charging stops when a trip genuinely needs more than one (a short-range car
+on a long trip often does) — see `app/planner.py`'s docstring and
+`app/range_model.py` for the honest, documented range-estimate assumptions
+(none of it pretends to be a physics simulator).
+
+**Not yet live-tested against the real ORS API** — built and unit-tested
+against the pure math (`range_model.py`) and against a local server with no
+key configured (confirms the 503 path works), but the actual geocode/routing
+round-trip needs a real `ORS_API_KEY` to verify end to end.

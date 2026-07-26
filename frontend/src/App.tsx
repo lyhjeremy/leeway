@@ -2,56 +2,42 @@ import { useEffect, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './App.css'
-
-// Stage 0: no real routing yet. A hardcoded LA -> SF route just proves the
-// map, deploy pipeline, and (once live) the backend are wired up correctly.
-const DUMMY_ROUTE: [number, number][] = [
-  [-118.3965, 34.0211], // Culver City
-  [-119.6982, 35.3733], // Buttonwillow
-  [-121.9018, 36.9741], // Los Banos area
-  [-122.4194, 37.7599], // Mission District, SF
-]
+import LocationInput from './LocationInput'
+import { planTrip } from './api'
+import type { GeocodeResult, PlanResponse, StopMode } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
 
+const STOP_MODES: { value: StopMode; label: string }[] = [
+  { value: 'fewest_stops', label: 'Fewest stops' },
+  { value: 'fastest_trip', label: 'Fastest trip' },
+  { value: 'best_amenities', label: 'Best amenities' },
+]
+
 function App() {
   const mapContainer = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<maplibregl.Map | null>(null)
+  const markersRef = useRef<maplibregl.Marker[]>([])
+
   const [apiStatus, setApiStatus] = useState<'checking' | 'ok' | 'down'>('checking')
+  const [origin, setOrigin] = useState<GeocodeResult | null>(null)
+  const [destination, setDestination] = useState<GeocodeResult | null>(null)
+  const [batteryPct, setBatteryPct] = useState(68)
+  const [fullRangeMi, setFullRangeMi] = useState(205)
+  const [stopMode, setStopMode] = useState<StopMode>('fewest_stops')
+  const [plan, setPlan] = useState<PlanResponse | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!mapContainer.current) return
-
     const map = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://tiles.openfreemap.org/styles/liberty',
       center: [-120.5, 36.2],
       zoom: 5.6,
     })
-
-    map.on('load', () => {
-      map.addSource('dummy-route', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: { type: 'LineString', coordinates: DUMMY_ROUTE },
-        },
-      })
-      map.addLayer({
-        id: 'dummy-route-line',
-        type: 'line',
-        source: 'dummy-route',
-        paint: { 'line-color': '#2f2e2b', 'line-width': 5 },
-      })
-
-      new maplibregl.Marker({ color: '#0b0b0b' })
-        .setLngLat(DUMMY_ROUTE[0])
-        .addTo(map)
-      new maplibregl.Marker({ color: '#0b0b0b' })
-        .setLngLat(DUMMY_ROUTE[DUMMY_ROUTE.length - 1])
-        .addTo(map)
-    })
-
+    mapRef.current = map
     return () => map.remove()
   }, [])
 
@@ -60,6 +46,83 @@ function App() {
       .then((r) => (r.ok ? setApiStatus('ok') : setApiStatus('down')))
       .catch(() => setApiStatus('down'))
   }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !plan) return
+
+    const drawRoute = () => {
+      const geojson = {
+        type: 'Feature' as const,
+        properties: {},
+        geometry: { type: 'LineString' as const, coordinates: plan.geometry },
+      }
+      const existing = map.getSource('route') as maplibregl.GeoJSONSource | undefined
+      if (existing) {
+        existing.setData(geojson)
+      } else {
+        map.addSource('route', { type: 'geojson', data: geojson })
+        map.addLayer({
+          id: 'route-line',
+          type: 'line',
+          source: 'route',
+          paint: { 'line-color': '#2f2e2b', 'line-width': 5 },
+        })
+      }
+
+      markersRef.current.forEach((m) => m.remove())
+      markersRef.current = []
+
+      if (origin) {
+        markersRef.current.push(
+          new maplibregl.Marker({ color: '#0b0b0b' }).setLngLat([origin.lon, origin.lat]).addTo(map),
+        )
+      }
+      if (destination) {
+        markersRef.current.push(
+          new maplibregl.Marker({ color: '#0b0b0b' }).setLngLat([destination.lon, destination.lat]).addTo(map),
+        )
+      }
+      for (const stop of plan.stops) {
+        const el = document.createElement('div')
+        el.className = stop.is_supercharger ? 'pin pin-supercharger' : 'pin pin-ccs'
+        markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([stop.lon, stop.lat]).addTo(map))
+      }
+
+      const bounds = plan.geometry.reduce(
+        (b, c) => b.extend(c as [number, number]),
+        new maplibregl.LngLatBounds(plan.geometry[0], plan.geometry[0]),
+      )
+      map.fitBounds(bounds, { padding: 60, duration: 500 })
+    }
+
+    if (map.isStyleLoaded()) drawRoute()
+    else map.once('load', drawRoute)
+  }, [plan, origin, destination])
+
+  async function handlePlan() {
+    if (!origin || !destination) {
+      setError('Pick both a start and a destination from the dropdown.')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await planTrip({
+        origin: { lat: origin.lat, lon: origin.lon },
+        destination: { lat: destination.lat, lon: destination.lon },
+        batteryPct,
+        fullRangeMi,
+        stopMode,
+      })
+      setPlan(result)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong planning that trip.')
+      setPlan(null)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="app-root">
@@ -71,7 +134,94 @@ function App() {
           backend: {apiStatus === 'checking' ? 'checking…' : apiStatus === 'ok' ? 'connected' : 'unreachable'}
         </span>
       </header>
-      <div ref={mapContainer} className="map" />
+      <div className="app-body">
+        <aside className="panel">
+          <div className="field-group">
+            <LocationInput placeholder="Start" dotClass="dot-a" value={origin} onChange={setOrigin} />
+            <LocationInput placeholder="Destination" dotClass="dot-b" value={destination} onChange={setDestination} />
+          </div>
+
+          <div>
+            <div className="row-label">Battery right now</div>
+            <div className="battery-row">
+              <span className="pct-value">{batteryPct}%</span>
+              <input
+                type="range"
+                min={1}
+                max={100}
+                value={batteryPct}
+                onChange={(e) => setBatteryPct(Number(e.target.value))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="row-label">Your car's real range at 100%</div>
+            <input
+              className="range-input"
+              type="number"
+              min={50}
+              max={400}
+              value={fullRangeMi}
+              onChange={(e) => setFullRangeMi(Number(e.target.value))}
+            />
+            <span className="range-unit">mi</span>
+          </div>
+
+          <div>
+            <div className="row-label">Charging stops</div>
+            <div className="seg">
+              {STOP_MODES.map((m) => (
+                <div key={m.value} className={m.value === stopMode ? 'on' : ''} onClick={() => setStopMode(m.value)}>
+                  {m.label}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button className="plan-btn" onClick={handlePlan} disabled={loading}>
+            {loading ? 'Planning…' : 'Plan this trip'}
+          </button>
+
+          {error && <div className="error-box">{error}</div>}
+
+          {plan && (
+            <>
+              <div className={`verdict ${plan.feasible ? 'verdict-ok' : 'verdict-bad'}`}>
+                <div className="status">
+                  {plan.feasible ? '✓ Makeable with your reserve' : '⚠ Tight - check the plan below'}
+                </div>
+                <div className="big">
+                  Arrive at {plan.arrival_pct}%{' '}
+                  <small>{plan.leeway_mi >= 0 ? `· ${plan.leeway_mi} mi of leeway` : ''}</small>
+                </div>
+                <div className="sub">
+                  {plan.distance_mi} mi · {plan.stops.length} stop{plan.stops.length === 1 ? '' : 's'} ·{' '}
+                  {Math.round(plan.duration_min / 60)} h {plan.duration_min % 60} min total
+                </div>
+                {plan.note && <div className="sub note">{plan.note}</div>}
+              </div>
+
+              <div className="itin">
+                {plan.stops.map((s, i) => (
+                  <div className="leg" key={i}>
+                    <span className={s.is_supercharger ? 'pin-dot pin-dot-sc' : 'pin-dot pin-dot-ccs'} />
+                    <div>
+                      <div className="t">{s.title}</div>
+                      <div className="d">
+                        {s.network} · arrive {s.arrive_pct}% → charge to {s.charge_to_pct}%
+                        {s.charge_time_min ? ` · ${s.charge_time_min} min` : ''}
+                        {!s.reachable && ' · may not be reachable, verify before departure'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </aside>
+        <div ref={mapContainer} className="map" />
+      </div>
     </div>
   )
 }
