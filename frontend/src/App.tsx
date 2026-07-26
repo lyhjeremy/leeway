@@ -7,9 +7,22 @@ import CarSetup from './CarSetup'
 import TripCard from './TripCard'
 import VoiceBar from './VoiceBar'
 import AccuracyPage from './AccuracyPage'
+import TripFeedback from './TripFeedback'
 import { planTrip } from './api'
 import type { ChargingStop, GeocodeResult, LatLon, PlanResponse, StopMode } from './types'
-import { loadFullRangeMi, loadRecentTrips, saveFullRangeMi, saveRecentTrip, type RecentTrip } from './storage'
+import {
+  clearPendingTrip,
+  loadFullRangeMi,
+  loadRecentTrips,
+  logRangeHistory,
+  logTripResult,
+  saveFullRangeMi,
+  savePendingTrip,
+  saveRecentTrip,
+  shouldPromptForPendingTrip,
+  type PendingTrip,
+  type RecentTrip,
+} from './storage'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
 
@@ -60,6 +73,7 @@ function Planner() {
   const [pickingStop, setPickingStop] = useState(false)
   const [shareMsg, setShareMsg] = useState<string | null>(null)
   const [showTripCard, setShowTripCard] = useState(false)
+  const [pendingTrip, setPendingTrip] = useState<PendingTrip | null>(() => shouldPromptForPendingTrip())
 
   useEffect(() => {
     if (!mapContainer.current) return
@@ -182,6 +196,12 @@ function Planner() {
       setPlan(result)
       saveRecentTrip({ origin, destination })
       setRecentTrips(loadRecentTrips())
+      savePendingTrip({
+        originLabel: origin.label,
+        destinationLabel: destination.label,
+        predictedArrivalPct: result.arrival_pct,
+        feasible: result.feasible,
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong planning that trip.')
       setPlan(null)
@@ -250,7 +270,19 @@ function Planner() {
   function handleCarSetupSave(rangeMi: number) {
     setFullRangeMi(rangeMi)
     saveFullRangeMi(rangeMi)
+    logRangeHistory(rangeMi)
     setShowCarSetup(false)
+  }
+
+  function handleLogTripResult(actualArrivalPct: number) {
+    if (!pendingTrip) return
+    logTripResult(pendingTrip, actualArrivalPct)
+    setPendingTrip(null)
+  }
+
+  function handleDismissPendingTrip() {
+    clearPendingTrip()
+    setPendingTrip(null)
   }
 
   return (
@@ -436,6 +468,9 @@ function Planner() {
       </div>
       {showCarSetup && (
         <CarSetup currentRangeMi={fullRangeMi} onSave={handleCarSetupSave} onClose={() => setShowCarSetup(false)} />
+      )}
+      {pendingTrip && (
+        <TripFeedback pending={pendingTrip} onLog={handleLogTripResult} onDismiss={handleDismissPendingTrip} />
       )}
       {shareMsg && <div className="share-toast">{shareMsg}</div>}
       {showTripCard && plan && origin && destination && (

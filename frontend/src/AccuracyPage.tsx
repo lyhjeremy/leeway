@@ -1,21 +1,17 @@
 import { useEffect, useState } from 'react'
+import { loadLoggedTrips, loadRangeHistory, type LoggedTrip, type RangeHistoryEntry } from './storage'
 
-interface AccuracyEntry {
-  date: string
-  trip: string
-  predicted_arrival_pct: number
-  actual_arrival_pct: number
-  notes?: string
+function formatDate(ms: number) {
+  return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 export default function AccuracyPage() {
-  const [entries, setEntries] = useState<AccuracyEntry[] | null>(null)
+  const [trips, setTrips] = useState<LoggedTrip[]>([])
+  const [rangeHistory, setRangeHistory] = useState<RangeHistoryEntry[]>([])
 
   useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}accuracy.json`)
-      .then((r) => r.json())
-      .then(setEntries)
-      .catch(() => setEntries([]))
+    setTrips(loadLoggedTrips())
+    setRangeHistory(loadRangeHistory())
   }, [])
 
   return (
@@ -28,37 +24,69 @@ export default function AccuracyPage() {
         </a>
       </div>
       <div className="accuracy-body">
-        <h1>Accuracy record</h1>
+        <h1>Your accuracy record</h1>
         <p>
-          Every real trip Leeway has predicted, next to what actually happened. No trip is left out, and no favorable
-          rounding — this is the honesty check for the "second opinion" promise.
+          This is <strong>this browser's own history</strong>, not a shared or crowd-sourced record - Leeway doesn't
+          have a backend database yet, so nothing here leaves your device. Every trip you've logged as "how did it
+          go?" shows up here, predicted next to actual, with no favorable rounding.
         </p>
-        {entries === null && <p className="muted">Loading…</p>}
-        {entries && entries.length === 0 && (
+        {trips.length === 0 && (
           <p className="muted">
-            No real trips logged yet. This page will fill in as real trips are driven and logged — the first entry
-            is coming once Stage 1's end-to-end verification trip is complete.
+            No trips logged yet. Plan a real trip, drive it, then answer "how did that trip go?" the next time you
+            open Leeway - it'll show up here.
           </p>
         )}
-        {entries && entries.length > 0 && (
+        {trips.length > 0 && (
+          <table className="accuracy-table">
+            <thead>
+              <tr>
+                <th>Logged</th>
+                <th>Trip</th>
+                <th>Predicted</th>
+                <th>Actual</th>
+                <th>Diff</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trips.map((t, i) => {
+                const diff = t.actualArrivalPct - t.predictedArrivalPct
+                return (
+                  <tr key={i}>
+                    <td>{formatDate(t.loggedAt)}</td>
+                    <td>
+                      {t.originLabel.split(',')[0]} → {t.destinationLabel.split(',')[0]}
+                    </td>
+                    <td>{t.predictedArrivalPct}%</td>
+                    <td>{t.actualArrivalPct}%</td>
+                    <td>{diff === 0 ? 'exact' : diff > 0 ? `+${diff} pts` : `${diff} pts`}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+
+        <h1 style={{ marginTop: 40 }}>Battery health trend</h1>
+        <p>
+          Every time you re-run "find your real range" in car setup, the result is logged here with a date - a rough
+          trend of how your pack's real-world range is changing over time.
+        </p>
+        {rangeHistory.length === 0 && (
+          <p className="muted">No range readings logged yet. Use "find your real range" in the planner to start.</p>
+        )}
+        {rangeHistory.length > 0 && (
           <table className="accuracy-table">
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Trip</th>
-                <th>Predicted</th>
-                <th>Actual</th>
-                <th>Notes</th>
+                <th>Full range</th>
               </tr>
             </thead>
             <tbody>
-              {entries.map((e, i) => (
+              {rangeHistory.map((r, i) => (
                 <tr key={i}>
-                  <td>{e.date}</td>
-                  <td>{e.trip}</td>
-                  <td>{e.predicted_arrival_pct}%</td>
-                  <td>{e.actual_arrival_pct}%</td>
-                  <td>{e.notes ?? ''}</td>
+                  <td>{formatDate(r.date)}</td>
+                  <td>{r.fullRangeMi} mi</td>
                 </tr>
               ))}
             </tbody>
