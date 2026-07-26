@@ -549,7 +549,8 @@ _KM_PATTERNS = [
     (re.compile(r"(\d+(?:\.\d+)?)\s*miles\b"), lambda m: f"{round(float(m.group(1)) * 1.609)} km"),
     (re.compile(r"(\d+(?:\.\d+)?)\s*mi\b"), lambda m: f"{round(float(m.group(1)) * 1.609)} km"),
     (re.compile(r"\bmile\s+(\d+)"), lambda m: f"km {round(float(m.group(1)) * 1.609)}"),
-    (re.compile(r"(\d+(?:\.\d+)?)\s*°F"), lambda m: f"{round((float(m.group(1)) - 32) * 5 / 9)}°C"),
+    # -? matters: "-30°F" without it converts only the "30" and renders "--1°C"
+    (re.compile(r"(-?\d+(?:\.\d+)?)\s*°F"), lambda m: f"{round((float(m.group(1)) - 32) * 5 / 9)}°C"),
     (re.compile(r"(\d+(?:\.\d+)?)\s*mph\b"), lambda m: f"{round(float(m.group(1)) * 1.609)} km/h"),
 ]
 

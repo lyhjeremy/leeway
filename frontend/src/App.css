@@ -815,6 +815,12 @@
   transform: rotate(45deg);
 }
 
+.trip-card-pin.wp {
+  border-radius: 50%;
+  border: 2.5px solid var(--muted);
+  background: none;
+}
+
 .trip-card-title {
   font-size: 15px;
   font-weight: 700;
@@ -1066,21 +1072,14 @@
   filter: drop-shadow(0 1px 3px rgba(11, 11, 11, 0.4));
 }
 
-/* Mobile: map on top (so you always see where you are), panel below as a
-   scrollable sheet - this is the Stage 3 "genuinely good on a phone"
-   requirement, not just a squeezed-down desktop layout. */
-@media (max-width: 720px) {
-  .app-header {
-    padding: 0 12px;
-    gap: 8px;
-  }
-
-  .tag {
-    display: none;
-  }
-
+/* Stacked layout: map on top (so you always see where you are), inputs,
+   then results, in one scroll. The breakpoint is 1000px, not phone-width -
+   two fixed side panels left a 70px map sliver at 740px, so tablets and
+   narrow laptop windows stack too. */
+@media (max-width: 1000px) {
   .app-body {
     flex-direction: column;
+    overflow-y: auto;
   }
 
   /* Sizing goes on .map-wrap (the actual flex child of .app-body) - the old
@@ -1092,11 +1091,6 @@
     flex: none;
     height: 42vh;
     min-height: min(240px, 45vh);
-  }
-
-  /* Stacked on mobile: map, then inputs, then results in one scroll. */
-  .app-body {
-    overflow-y: auto;
   }
 
   .panel {
@@ -1116,6 +1110,18 @@
   .panel-right {
     order: 3;
     border-top: 1px solid var(--hair);
+  }
+}
+
+/* Small screens only */
+@media (max-width: 720px) {
+  .app-header {
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .tag {
+    display: none;
   }
 
   .modal-backdrop {

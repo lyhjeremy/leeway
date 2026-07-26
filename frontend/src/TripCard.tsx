@@ -36,12 +36,15 @@ export default function TripCard({ plan, origin, destination, batteryPct, units,
 
         {plan.stops.map((s, i) => (
           <div className="trip-card-row" key={i}>
-            <span className={s.is_supercharger ? 'trip-card-pin sc' : 'trip-card-pin ccs'} />
+            <span className={s.is_waypoint ? 'trip-card-pin wp' : s.is_supercharger ? 'trip-card-pin sc' : 'trip-card-pin ccs'} />
             <div>
               <div className="trip-card-title">{s.title}</div>
               <div className="trip-card-sub">
-                Arrive {s.arrive_pct}% → charge to {s.charge_to_pct}%
-                {s.charge_time_min ? ` (~${s.charge_time_min} min)` : ''}
+                {s.is_waypoint
+                  ? `Pass through with ${s.arrive_pct}%`
+                  : `Arrive ${s.arrive_pct}% → charge to ${s.charge_to_pct}%${
+                      s.charge_time_min ? ` (~${s.charge_time_min} min)` : ''
+                    }`}
               </div>
             </div>
           </div>
