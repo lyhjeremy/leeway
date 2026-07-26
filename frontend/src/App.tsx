@@ -101,7 +101,7 @@ function Planner() {
   const [safetyMode, setSafetyMode] = useState<SafetyMode>('flag_only')
   const [avoidTolls, setAvoidTolls] = useState(false)
   const [avoidHighways, setAvoidHighways] = useState(false)
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showOptions, setShowOptions] = useState(false)
   const [chargeToPct, setChargeToPct] = useState(80)
   const [reservePct, setReservePct] = useState(15)
   const [arrivalTargetPct, setArrivalTargetPct] = useState(0)
@@ -562,6 +562,22 @@ function Planner() {
 
   const rangeDisplay = Math.round(units === 'km' ? fullRangeMi * MI_TO_KM : fullRangeMi)
 
+  // Tells you the collapsed options section is hiding something you set.
+  const changedOptions = [
+    stopMode !== 'fewest_stops',
+    chargerFilter !== 'all',
+    safetyMode !== 'flag_only',
+    avoidTolls,
+    avoidHighways,
+    waypoints.length > 0,
+    chargeToPct !== 80,
+    reservePct !== 15,
+    arrivalTargetPct > 0,
+    passengers > 0,
+    suitcases > 0,
+    tempOverrideOn,
+  ].filter(Boolean).length
+
   return (
     <div className="app-root">
       <header className="app-header">
@@ -628,6 +644,16 @@ function Planner() {
             </div>
           </div>
 
+          <div>
+            <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setShowOptions((v) => !v)}>
+              {showOptions
+                ? 'fewer options ▾'
+                : changedOptions > 0
+                  ? `more options (${changedOptions} set) ▸`
+                  : 'more options ▸'}
+            </button>
+            {showOptions && (
+              <div className="options">
           <div>
             <div className="row-label">Charging stops</div>
             <div className="seg">
@@ -705,12 +731,7 @@ function Planner() {
             </label>
           </div>
 
-          <div>
-            <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setShowAdvanced((v) => !v)}>
-              {showAdvanced ? 'advanced ▾' : 'advanced ▸'}
-            </button>
-            {showAdvanced && (
-              <div className="advanced">
+          <div className="advanced">
                 <div className="row-label" style={{ marginTop: 10 }}>
                   Charge to at each stop
                 </div>
@@ -809,6 +830,7 @@ function Planner() {
                 {!tempOverrideOn && (
                   <div className="seg-hint">Live weather at the route midpoint is used unless you set your own.</div>
                 )}
+          </div>
               </div>
             )}
           </div>
