@@ -3,8 +3,11 @@ import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './App.css'
 import LocationInput from './LocationInput'
+import CarSetup from './CarSetup'
+import AccuracyPage from './AccuracyPage'
 import { planTrip } from './api'
 import type { GeocodeResult, PlanResponse, StopMode } from './types'
+import { loadFullRangeMi, loadRecentTrips, saveFullRangeMi, saveRecentTrip, type RecentTrip } from './storage'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
 
@@ -14,20 +17,39 @@ const STOP_MODES: { value: StopMode; label: string }[] = [
   { value: 'best_amenities', label: 'Best amenities' },
 ]
 
+// First-visit demo trip - shown pre-filled so the value is visible before
+// anyone types anything. Real coordinates (Culver City -> SF Mission), not
+// geocoded on load, so this renders instantly even before ORS is configured.
+const DEMO_ORIGIN: GeocodeResult = { label: 'Culver City, Los Angeles', lat: 34.0211, lon: -118.3965 }
+const DEMO_DESTINATION: GeocodeResult = { label: 'Mission District, San Francisco', lat: 37.7599, lon: -122.4194 }
+
 function App() {
+  const [route, setRoute] = useState(window.location.hash)
+  useEffect(() => {
+    const onHashChange = () => setRoute(window.location.hash)
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  return route === '#accuracy' ? <AccuracyPage /> : <Planner />
+}
+
+function Planner() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<maplibregl.Marker[]>([])
 
   const [apiStatus, setApiStatus] = useState<'checking' | 'ok' | 'down'>('checking')
-  const [origin, setOrigin] = useState<GeocodeResult | null>(null)
-  const [destination, setDestination] = useState<GeocodeResult | null>(null)
+  const [origin, setOrigin] = useState<GeocodeResult | null>(DEMO_ORIGIN)
+  const [destination, setDestination] = useState<GeocodeResult | null>(DEMO_DESTINATION)
   const [batteryPct, setBatteryPct] = useState(68)
-  const [fullRangeMi, setFullRangeMi] = useState(205)
+  const [fullRangeMi, setFullRangeMi] = useState<number>(() => loadFullRangeMi() ?? 205)
   const [stopMode, setStopMode] = useState<StopMode>('fewest_stops')
   const [plan, setPlan] = useState<PlanResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showCarSetup, setShowCarSetup] = useState(false)
+  const [recentTrips, setRecentTrips] = useState<RecentTrip[]>(() => loadRecentTrips())
 
   useEffect(() => {
     if (!mapContainer.current) return
@@ -116,12 +138,25 @@ function App() {
         stopMode,
       })
       setPlan(result)
+      saveRecentTrip({ origin, destination })
+      setRecentTrips(loadRecentTrips())
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong planning that trip.')
       setPlan(null)
     } finally {
       setLoading(false)
     }
+  }
+
+  function pickRecentTrip(trip: RecentTrip) {
+    setOrigin(trip.origin)
+    setDestination(trip.destination)
+  }
+
+  function handleCarSetupSave(rangeMi: number) {
+    setFullRangeMi(rangeMi)
+    saveFullRangeMi(rangeMi)
+    setShowCarSetup(false)
   }
 
   return (
@@ -141,6 +176,17 @@ function App() {
             <LocationInput placeholder="Destination" dotClass="dot-b" value={destination} onChange={setDestination} />
           </div>
 
+          {recentTrips.length > 0 && (
+            <div className="recents">
+              Recent:{' '}
+              {recentTrips.map((t, i) => (
+                <span key={i} className="chip" onClick={() => pickRecentTrip(t)}>
+                  {t.origin.label.split(',')[0]} → {t.destination.label.split(',')[0]}
+                </span>
+              ))}
+            </div>
+          )}
+
           <div>
             <div className="row-label">Battery right now</div>
             <div className="battery-row">
@@ -157,15 +203,20 @@ function App() {
 
           <div>
             <div className="row-label">Your car's real range at 100%</div>
-            <input
-              className="range-input"
-              type="number"
-              min={50}
-              max={400}
-              value={fullRangeMi}
-              onChange={(e) => setFullRangeMi(Number(e.target.value))}
-            />
-            <span className="range-unit">mi</span>
+            <div className="battery-row">
+              <input
+                className="range-input"
+                type="number"
+                min={50}
+                max={400}
+                value={fullRangeMi}
+                onChange={(e) => setFullRangeMi(Number(e.target.value))}
+              />
+              <span className="range-unit">mi</span>
+              <button className="link-btn" onClick={() => setShowCarSetup(true)}>
+                find my real range
+              </button>
+            </div>
           </div>
 
           <div>
@@ -219,9 +270,16 @@ function App() {
               </div>
             </>
           )}
+
+          <a className="accuracy-link" href="#accuracy">
+            Accuracy record →
+          </a>
         </aside>
         <div ref={mapContainer} className="map" />
       </div>
+      {showCarSetup && (
+        <CarSetup currentRangeMi={fullRangeMi} onSave={handleCarSetupSave} onClose={() => setShowCarSetup(false)} />
+      )}
     </div>
   )
 }

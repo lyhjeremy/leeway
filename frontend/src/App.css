@@ -1,4 +1,4 @@
-.app-root {
+:root {
   --page: #f9f9f7;
   --card: #fcfcfb;
   --ink: #0b0b0b;
@@ -10,6 +10,9 @@
   --sc-blue: #2a78d6;
   --ccs-orange: #eb6834;
   --warn: #fab219;
+}
+
+.app-root {
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -342,6 +345,209 @@
 .pin-dot-ccs {
   background: var(--ccs-orange);
   transform: rotate(45deg);
+}
+
+.recents {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: -6px;
+}
+
+.chip {
+  display: inline-block;
+  border: 1px solid var(--hair);
+  border-radius: 99px;
+  padding: 3px 10px;
+  color: var(--ink2);
+  background: var(--card);
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--page);
+}
+
+.link-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 12.5px;
+  color: var(--ink2);
+  text-decoration: underline;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+
+.accuracy-link {
+  font-size: 12.5px;
+  color: var(--ink2);
+  text-decoration: none;
+  border-top: 1px solid var(--hair);
+  padding-top: 12px;
+  margin-top: auto;
+}
+
+.accuracy-link:hover {
+  color: var(--ink);
+}
+
+/* Car setup modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 11, 11, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-card {
+  width: 420px;
+  background: var(--card);
+  border-radius: 18px;
+  padding: 26px 28px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+}
+
+.modal-lede {
+  font-size: 13.5px;
+  color: var(--ink2);
+  margin: 0 0 18px;
+}
+
+.modal-inputs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.modal-inputs label {
+  flex: 1;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal-inputs label span:first-child {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.modal-inputs input {
+  border: none;
+  outline: none;
+  font-size: 18px;
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--ink);
+  width: 100%;
+}
+
+.modal-inputs .unit {
+  font-size: 12px;
+  color: var(--ink2);
+}
+
+.modal-result {
+  border: 1px solid var(--hair);
+  background: var(--page);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.modal-result-big {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.modal-result-sub {
+  font-size: 12.5px;
+  color: var(--ink2);
+  margin-top: 3px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.modal-skip {
+  background: none;
+  border: none;
+  font-size: 13.5px;
+  color: var(--ink2);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* Accuracy page */
+.accuracy-page {
+  min-height: 100vh;
+  background: var(--page);
+  color: var(--ink);
+}
+
+.accuracy-header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  background: var(--card);
+  border-bottom: 1px solid var(--hair);
+}
+
+.back-link {
+  margin-left: auto;
+  font-size: 13.5px;
+  color: var(--ink2);
+  text-decoration: none;
+}
+
+.accuracy-body {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+
+.accuracy-body h1 {
+  font-size: 26px;
+  margin: 0 0 12px;
+}
+
+.accuracy-body p {
+  font-size: 14.5px;
+  color: var(--ink2);
+  line-height: 1.5;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.accuracy-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  font-size: 13.5px;
+}
+
+.accuracy-table th,
+.accuracy-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hair);
 }
 
 /* Map marker DOM elements (MapLibre custom markers) */
