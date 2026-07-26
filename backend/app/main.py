@@ -7,14 +7,14 @@ from pydantic import BaseModel, Field
 
 from . import gemini, providers
 from .gemini import GeminiNotConfigured
-from .planner import localize_km, plan_trip
+from .planner import localize_c, localize_km, plan_trip
 from .providers import OCMNotConfigured, ORSNotConfigured
 from .voice import VoiceSearchError, find_stops
 
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.10.3"
+VERSION = "0.11.0"
 
 app = FastAPI(title="Leeway API")
 
@@ -87,6 +87,7 @@ class PlanRequest(BaseModel):
     suitcases: int = Field(default=0, ge=0, le=10)
     temp_override_f: float | None = Field(default=None, ge=-30, le=130)
     units: Literal["mi", "km"] = "mi"  # numeric fields stay miles; narrative strings get localized
+    temp_unit: Literal["F", "C"] = "F"  # independent of distance - km with °F is a real combination
 
 
 @app.post("/api/plan")
@@ -130,7 +131,11 @@ async def plan(req: PlanRequest):
             suitcases=req.suitcases,
             temp_override_f=req.temp_override_f,
         )
-        return localize_km(result) if req.units == "km" else result
+        if req.units == "km":
+            result = localize_km(result)
+        if req.temp_unit == "C":
+            result = localize_c(result)
+        return result
     except ORSNotConfigured:
         raise HTTPException(503, "Routing isn't configured yet (ORS_API_KEY missing).")
     except OCMNotConfigured:

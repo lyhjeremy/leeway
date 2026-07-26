@@ -30,15 +30,30 @@ function storageRemove(store: 'local' | 'session', key: string) {
 
 const RANGE_KEY = 'leeway.fullRangeMi'
 const TRIPS_KEY = 'leeway.recentTrips'
-const UNITS_KEY = 'leeway.units'
+const UNITS_KEY = 'leeway.units' // legacy combined pref, still read as a fallback
+const DIST_UNIT_KEY = 'leeway.distUnit'
+const TEMP_UNIT_KEY = 'leeway.tempUnit'
 const MAX_RECENT = 5
 
-export function loadUnits(): 'mi' | 'km' {
+export function loadDistUnit(): 'mi' | 'km' {
+  const v = storageGet('local', DIST_UNIT_KEY)
+  if (v === 'mi' || v === 'km') return v
   return storageGet('local', UNITS_KEY) === 'km' ? 'km' : 'mi'
 }
 
-export function saveUnits(units: 'mi' | 'km') {
-  storageSet('local', UNITS_KEY, units)
+export function saveDistUnit(unit: 'mi' | 'km') {
+  storageSet('local', DIST_UNIT_KEY, unit)
+}
+
+export function loadTempUnit(): 'F' | 'C' {
+  const v = storageGet('local', TEMP_UNIT_KEY)
+  if (v === 'F' || v === 'C') return v
+  // someone who'd chosen km under the combined pref was seeing °C too
+  return storageGet('local', UNITS_KEY) === 'km' ? 'C' : 'F'
+}
+
+export function saveTempUnit(unit: 'F' | 'C') {
+  storageSet('local', TEMP_UNIT_KEY, unit)
 }
 
 const THEME_KEY = 'leeway.theme'

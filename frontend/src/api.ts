@@ -29,6 +29,7 @@ export async function planTrip(params: {
   suitcases?: number
   tempOverrideF?: number | null
   units?: Units
+  tempUnit?: 'F' | 'C'
 }): Promise<PlanResponse> {
   const res = await fetch(`${API_BASE}/api/plan`, {
     method: 'POST',
@@ -53,6 +54,7 @@ export async function planTrip(params: {
       suitcases: params.suitcases ?? 0,
       temp_override_f: params.tempOverrideF ?? null,
       units: params.units ?? 'mi',
+      temp_unit: params.tempUnit ?? 'F',
     }),
   })
   if (!res.ok) {

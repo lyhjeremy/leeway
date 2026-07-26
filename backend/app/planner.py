@@ -554,23 +554,27 @@ _KM_PATTERNS = [
     (re.compile(r"(\d+(?:\.\d+)?)\s*miles\b"), lambda m: f"{round(float(m.group(1)) * 1.609)} km"),
     (re.compile(r"(\d+(?:\.\d+)?)\s*mi\b"), lambda m: f"{round(float(m.group(1)) * 1.609)} km"),
     (re.compile(r"\bmile\s+(\d+)"), lambda m: f"km {round(float(m.group(1)) * 1.609)}"),
-    # -? matters: "-30°F" without it converts only the "30" and renders "--1°C"
-    (re.compile(r"(-?\d+(?:\.\d+)?)\s*°F"), lambda m: f"{round((float(m.group(1)) - 32) * 5 / 9)}°C"),
     (re.compile(r"(\d+(?:\.\d+)?)\s*mph\b"), lambda m: f"{round(float(m.group(1)) * 1.609)} km/h"),
 ]
 
+# Separate from distance: someone can think in miles but °C (or km and °F).
+# -? matters: "-30°F" without it converts only the "30" and renders "--1°C"
+_C_PATTERNS = [
+    (re.compile(r"(-?\d+(?:\.\d+)?)\s*°F"), lambda m: f"{round((float(m.group(1)) - 32) * 5 / 9)}°C"),
+]
 
-def localize_km(plan: dict) -> dict:
-    """Convert the units inside narrative strings (notes, flag descriptions,
-    weather summaries) to metric. Numeric fields stay in miles - the
-    frontend owns numeric display and converts them itself; this exists
-    because sentences like 'descent over 5.1 mi' are composed server-side
-    and a km driver shouldn't have to read them in miles. The templates are
-    all authored in this codebase, so the patterns are a closed set."""
+
+def _localize(plan: dict, patterns: list) -> dict:
+    """Convert units inside narrative strings (notes, flag descriptions,
+    weather summaries). Numeric fields stay in miles - the frontend owns
+    numeric display and converts them itself; this exists because sentences
+    like 'descent over 5.1 mi' are composed server-side and a km driver
+    shouldn't have to read them in miles. The templates are all authored in
+    this codebase, so the patterns are a closed set."""
     def conv(text: str | None) -> str | None:
         if not text:
             return text
-        for pat, repl in _KM_PATTERNS:
+        for pat, repl in patterns:
             text = pat.sub(repl, text)
         return text
 
@@ -580,6 +584,14 @@ def localize_km(plan: dict) -> dict:
     if plan.get("weather"):
         plan["weather"]["summary"] = conv(plan["weather"]["summary"])
     return plan
+
+
+def localize_km(plan: dict) -> dict:
+    return _localize(plan, _KM_PATTERNS)
+
+
+def localize_c(plan: dict) -> dict:
+    return _localize(plan, _C_PATTERNS)
 
 
 async def _point_hazard_flags(geometry: list[tuple[float, float]]) -> list[dict]:

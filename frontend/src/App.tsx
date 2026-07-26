@@ -22,16 +22,18 @@ import type {
 } from './types'
 import {
   clearPendingTrip,
+  loadDistUnit,
   loadFullRangeMi,
   loadRecentTrips,
-  loadUnits,
+  loadTempUnit,
   logRangeHistory,
   logTripResult,
+  saveDistUnit,
   saveFullRangeMi,
   savePendingTrip,
   saveRecentTrip,
+  saveTempUnit,
   saveTheme,
-  saveUnits,
   shouldPromptForPendingTrip,
   type PendingTrip,
   type RecentTrip,
@@ -90,9 +92,11 @@ function Planner() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<maplibregl.Marker[]>([])
+  const lastBoundsRef = useRef<maplibregl.LngLatBounds | null>(null)
 
   const [apiStatus, setApiStatus] = useState<'checking' | 'ok' | 'down'>('checking')
-  const [units, setUnits] = useState<Units>(() => loadUnits())
+  const [units, setUnits] = useState<Units>(() => loadDistUnit())
+  const [tempUnit, setTempUnit] = useState<'F' | 'C'>(() => loadTempUnit())
   const [origin, setOrigin] = useState<GeocodeResult | null>(DEMO_ORIGIN)
   const [destination, setDestination] = useState<GeocodeResult | null>(DEMO_DESTINATION)
   // Raw field text, kept so Plan can resolve a typed-but-never-picked place
@@ -131,13 +135,52 @@ function Planner() {
 
   // All numbers live in miles internally; only the display converts.
   const dist = (mi: number) => `${Math.round(units === 'km' ? mi * MI_TO_KM : mi)} ${units}`
-  const tempDisplay = (f: number) => (units === 'km' ? Math.round(((f - 32) * 5) / 9) : Math.round(f))
-  const tempFromDisplay = (v: number) => (units === 'km' ? (v * 9) / 5 + 32 : v)
+  const tempDisplay = (f: number) => (tempUnit === 'C' ? Math.round(((f - 32) * 5) / 9) : Math.round(f))
+  const tempFromDisplay = (v: number) => (tempUnit === 'C' ? (v * 9) / 5 + 32 : v)
 
   function toggleUnits() {
     const next = units === 'mi' ? 'km' : 'mi'
     setUnits(next)
-    saveUnits(next)
+    saveDistUnit(next)
+  }
+
+  function toggleTempUnit() {
+    const next = tempUnit === 'F' ? 'C' : 'F'
+    setTempUnit(next)
+    saveTempUnit(next)
+  }
+
+  // The floating cards cover the map's left and right edges on desktop -
+  // pad any bounds-fit so the route isn't hidden underneath them.
+  const fitPadding = () =>
+    window.innerWidth > 1000 ? { top: 90, bottom: 60, left: 410, right: 430 } : 60
+
+  function handleLocateMe() {
+    if (!navigator.geolocation) {
+      setShareMsg("This browser doesn't share location")
+      setTimeout(() => setShareMsg(null), 2500)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const o = { label: 'My location', lat: pos.coords.latitude, lon: pos.coords.longitude }
+        setOrigin(o)
+        setOriginText(o.label)
+        mapRef.current?.flyTo({ center: [o.lon, o.lat], zoom: 11, duration: 800 })
+      },
+      () => {
+        setShareMsg("Couldn't get your location - check the browser permission")
+        setTimeout(() => setShareMsg(null), 2500)
+      },
+      { enableHighAccuracy: true, timeout: 8000 },
+    )
+  }
+
+  function handleRecenter() {
+    const map = mapRef.current
+    if (!map) return
+    if (lastBoundsRef.current) map.fitBounds(lastBoundsRef.current, { padding: fitPadding(), duration: 500 })
+    else map.flyTo({ center: [-120.5, 36.2], zoom: 5.6, duration: 500 })
   }
 
   // main.tsx already stamped the theme on <html> before first paint.
@@ -412,13 +455,8 @@ function Planner() {
         (b, c) => b.extend(c as [number, number]),
         new maplibregl.LngLatBounds(plan.geometry[0], plan.geometry[0]),
       )
-      // The floating cards cover the map's left and right edges on desktop -
-      // pad the fit so the route isn't hidden underneath them.
-      const overlaid = window.innerWidth > 1000
-      map.fitBounds(bounds, {
-        padding: overlaid ? { top: 90, bottom: 60, left: 410, right: 430 } : 60,
-        duration: 500,
-      })
+      lastBoundsRef.current = bounds
+      map.fitBounds(bounds, { padding: fitPadding(), duration: 500 })
     }
 
     if (map.isStyleLoaded()) drawRoute()
@@ -505,6 +543,7 @@ function Planner() {
         suitcases,
         tempOverrideF: tempOverrideOn ? tempOverrideF : null,
         units,
+        tempUnit,
         excludedStationIds: overrides.excludedStationIds,
         waypoints: allWaypoints,
       })
@@ -928,7 +967,7 @@ function Planner() {
                       value={tempDisplay(tempOverrideF)}
                       onChange={(e) => setTempOverrideF(tempFromDisplay(Number(e.target.value)))}
                     />
-                    <span className="range-unit">{units === 'km' ? '°C' : '°F'}</span>
+                    <span className="range-unit">{tempUnit === 'C' ? '°C' : '°F'}</span>
                   </div>
                 )}
                 {!tempOverrideOn && (
@@ -949,8 +988,29 @@ function Planner() {
         <div className="map-wrap">
           <div ref={mapContainer} className="map" />
           <div className="float-chips">
-            <button className="unit-toggle" onClick={toggleUnits} title="Switch units">
-              {units === 'mi' ? 'mi · °F' : 'km · °C'}
+            <button className="unit-toggle" onClick={handleLocateMe} title="Start from my location">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="7" />
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                <line x1="12" y1="2" x2="12" y2="5" />
+                <line x1="12" y1="19" x2="12" y2="22" />
+                <line x1="2" y1="12" x2="5" y2="12" />
+                <line x1="19" y1="12" x2="22" y2="12" />
+              </svg>
+            </button>
+            <button className="unit-toggle" onClick={handleRecenter} title="Re-center the route">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 9V5a1 1 0 0 1 1-1h4" />
+                <path d="M15 4h4a1 1 0 0 1 1 1v4" />
+                <path d="M20 15v4a1 1 0 0 1-1 1h-4" />
+                <path d="M9 20H5a1 1 0 0 1-1-1v-4" />
+              </svg>
+            </button>
+            <button className="unit-toggle" onClick={toggleUnits} title="Switch distance unit">
+              {units}
+            </button>
+            <button className="unit-toggle" onClick={toggleTempUnit} title="Switch temperature unit">
+              {tempUnit === 'F' ? '°F' : '°C'}
             </button>
             <button
               className="unit-toggle theme-toggle"

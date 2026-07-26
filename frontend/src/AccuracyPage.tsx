@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { loadLoggedTrips, loadRangeHistory, loadUnits, type LoggedTrip, type RangeHistoryEntry } from './storage'
+import { loadLoggedTrips, loadRangeHistory, loadDistUnit, type LoggedTrip, type RangeHistoryEntry } from './storage'
 
 const MI_TO_KM = 1.609344
 
@@ -10,7 +10,7 @@ function formatDate(ms: number) {
 export default function AccuracyPage() {
   const [trips, setTrips] = useState<LoggedTrip[]>([])
   const [rangeHistory, setRangeHistory] = useState<RangeHistoryEntry[]>([])
-  const units = loadUnits()
+  const units = loadDistUnit()
   const dist = (mi: number) => `${Math.round(units === 'km' ? mi * MI_TO_KM : mi)} ${units}`
 
   useEffect(() => {
