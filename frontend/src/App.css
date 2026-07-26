@@ -319,6 +319,19 @@
   background: none;
 }
 
+.dot-wp {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2.5px solid var(--muted);
+  background: none;
+  flex: none;
+}
+
+.waypoint-area {
+  margin-top: -6px;
+}
+
 .location-results {
   position: absolute;
   top: 100%;

@@ -7,13 +7,17 @@ interface Props {
   dotClass: string
   value: GeocodeResult | null
   onChange: (value: GeocodeResult | null) => void
+  // Lets the parent resolve typed-but-never-picked text at plan time -
+  // the plan button must work even if the dropdown was never touched.
+  onTextChange?: (text: string) => void
 }
 
-export default function LocationInput({ placeholder, dotClass, value, onChange }: Props) {
+export default function LocationInput({ placeholder, dotClass, value, onChange, onTextChange }: Props) {
   const [text, setText] = useState(value?.label ?? '')
   const [results, setResults] = useState<GeocodeResult[]>([])
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [failed, setFailed] = useState(false)
   const [highlight, setHighlight] = useState(-1)
   const [open, setOpen] = useState(false)
   const debounceRef = useRef<number | undefined>(undefined)
@@ -29,6 +33,7 @@ export default function LocationInput({ placeholder, dotClass, value, onChange }
   async function search(query: string) {
     latestQueryRef.current = query
     setSearching(true)
+    setFailed(false)
     setOpen(true)
     try {
       const r = await geocode(query)
@@ -38,7 +43,13 @@ export default function LocationInput({ placeholder, dotClass, value, onChange }
       setSearched(true)
       setHighlight(r.length > 0 ? 0 : -1)
     } catch {
-      if (latestQueryRef.current === query) setResults([])
+      // A network/backend failure is not "no such place" - saying
+      // "no matches" here sent someone hunting for typos during a
+      // backend cold start.
+      if (latestQueryRef.current === query) {
+        setResults([])
+        setFailed(true)
+      }
     } finally {
       if (latestQueryRef.current === query) setSearching(false)
     }
@@ -47,11 +58,13 @@ export default function LocationInput({ placeholder, dotClass, value, onChange }
   function handleInput(next: string) {
     setText(next)
     onChange(null)
+    onTextChange?.(next)
     window.clearTimeout(debounceRef.current)
     // Old results are for the old text - keeping them visible while a new
     // search loads made the dropdown feel unresponsive to typing.
     setResults([])
     setSearched(false)
+    setFailed(false)
     setHighlight(-1)
     if (next.trim().length < 3) {
       setSearching(false)
@@ -124,7 +137,10 @@ export default function LocationInput({ placeholder, dotClass, value, onChange }
             </li>
           ))}
           {searching && results.length === 0 && <li className="location-empty">Searching…</li>}
-          {!searching && searched && results.length === 0 && (
+          {!searching && failed && (
+            <li className="location-empty">Search hiccuped - the backend may be waking up. Try again in a moment.</li>
+          )}
+          {!searching && !failed && searched && results.length === 0 && (
             <li className="location-empty">No matches. Leeway covers California for now.</li>
           )}
         </ul>

@@ -8,7 +8,7 @@ import TripCard from './TripCard'
 import VoiceBar from './VoiceBar'
 import AccuracyPage from './AccuracyPage'
 import TripFeedback from './TripFeedback'
-import { fetchRoutes, planTrip } from './api'
+import { fetchRoutes, geocode, planTrip } from './api'
 import type {
   ChargerFilter,
   ChargingStop,
@@ -94,6 +94,11 @@ function Planner() {
   const [units, setUnits] = useState<Units>(() => loadUnits())
   const [origin, setOrigin] = useState<GeocodeResult | null>(DEMO_ORIGIN)
   const [destination, setDestination] = useState<GeocodeResult | null>(DEMO_DESTINATION)
+  // Raw field text, kept so Plan can resolve a typed-but-never-picked place
+  // itself instead of demanding a dropdown interaction.
+  const [originText, setOriginText] = useState(DEMO_ORIGIN.label)
+  const [destText, setDestText] = useState(DEMO_DESTINATION.label)
+  const [showWaypointSearch, setShowWaypointSearch] = useState(false)
   const [batteryPct, setBatteryPct] = useState(68)
   const [fullRangeMi, setFullRangeMi] = useState<number>(() => loadFullRangeMi() ?? 205)
   const [stopMode, setStopMode] = useState<StopMode>('fewest_stops')
@@ -385,10 +390,6 @@ function Planner() {
     waypoints: Waypoint[]
     via?: { lat: number; lon: number } | null
   }) {
-    if (!origin || !destination) {
-      setError('Pick both a start and a destination from the dropdown.')
-      return
-    }
     // A cleared number input reads as 0, which the backend (rightly) refuses.
     if (!Number.isFinite(fullRangeMi) || fullRangeMi < 50 || fullRangeMi > 600) {
       setError(
@@ -415,14 +416,41 @@ function Planner() {
     }
     setLoading(true)
     setError(null)
+    // Resolve typed-but-never-picked places right here - requiring a
+    // dropdown pick made Plan fail whenever the dropdown flaked (slow
+    // backend wake-up, a tap elsewhere closing it).
+    let o = origin
+    let d = destination
+    if (!o || !d) {
+      try {
+        if (!o && originText.trim().length >= 3) o = (await geocode(originText))[0] ?? null
+        if (!d && destText.trim().length >= 3) d = (await geocode(destText))[0] ?? null
+      } catch {
+        setError('Search hiccuped - the backend may be waking up. Try planning again in a moment.')
+        setLoading(false)
+        return
+      }
+      if (o) setOrigin(o)
+      if (d) setDestination(d)
+      if (!o || !d) {
+        const missing = !o ? originText : destText
+        setError(
+          missing.trim().length >= 3
+            ? `Couldn't find "${missing}" in California. Try a city or address.`
+            : 'Enter both a start and a destination.',
+        )
+        setLoading(false)
+        return
+      }
+    }
     try {
       const allWaypoints = [...overrides.waypoints]
       if (overrides.via) {
         allWaypoints.push({ ...overrides.via, title: 'via', hidden: true })
       }
       const result = await planTrip({
-        origin: { lat: origin.lat, lon: origin.lon },
-        destination: { lat: destination.lat, lon: destination.lon },
+        origin: { lat: o.lat, lon: o.lon },
+        destination: { lat: d.lat, lon: d.lon },
         batteryPct,
         fullRangeMi,
         stopMode,
@@ -441,11 +469,11 @@ function Planner() {
         waypoints: allWaypoints,
       })
       setPlan(result)
-      saveRecentTrip({ origin, destination })
+      saveRecentTrip({ origin: o, destination: d })
       setRecentTrips(loadRecentTrips())
       savePendingTrip({
-        originLabel: origin.label,
-        destinationLabel: destination.label,
+        originLabel: o.label,
+        destinationLabel: d.label,
         predictedArrivalPct: result.arrival_pct,
         feasible: result.feasible,
       })
@@ -594,8 +622,53 @@ function Planner() {
       <div className="app-body">
         <aside className="panel panel-left">
           <div className="field-group">
-            <LocationInput placeholder="Start" dotClass="dot-a" value={origin} onChange={setOrigin} />
-            <LocationInput placeholder="Destination" dotClass="dot-b" value={destination} onChange={setDestination} />
+            <LocationInput placeholder="Start" dotClass="dot-a" value={origin} onChange={setOrigin} onTextChange={setOriginText} />
+            <LocationInput
+              placeholder="Destination"
+              dotClass="dot-b"
+              value={destination}
+              onChange={setDestination}
+              onTextChange={setDestText}
+            />
+          </div>
+
+          <div className="waypoint-area">
+            {waypoints.length > 0 && (
+              <div className="recents" style={{ marginTop: 0 }}>
+                {waypoints.map((w, i) => (
+                  <button key={i} className="chip" onClick={() => removeWaypoint(i)} title="Remove this stop">
+                    {w.title} ✕
+                  </button>
+                ))}
+              </div>
+            )}
+            {showWaypointSearch && waypoints.length < 5 ? (
+              <div className="field-group" style={{ marginTop: waypoints.length > 0 ? 8 : 0 }}>
+                <LocationInput
+                  key={waypoints.length}
+                  placeholder="Search a stop along the way"
+                  dotClass="dot-wp"
+                  value={null}
+                  onChange={(r) => {
+                    if (!r) return
+                    const next = [...waypoints, { lat: r.lat, lon: r.lon, title: r.label.split(',')[0] }]
+                    setWaypoints(next)
+                    setShowWaypointSearch(false)
+                    runPlan({ excludedStationIds, waypoints: next, via: currentVia() })
+                  }}
+                />
+              </div>
+            ) : (
+              waypoints.length < 5 && (
+                <button
+                  className="link-btn"
+                  style={{ marginLeft: 0, marginTop: waypoints.length > 0 ? 6 : 0 }}
+                  onClick={() => setShowWaypointSearch(true)}
+                >
+                  + add a stop along the way
+                </button>
+              )
+            )}
           </div>
 
           {recentTrips.length > 0 && (
@@ -678,18 +751,12 @@ function Planner() {
 
           <div>
             <div className="row-label">Your stops along the way</div>
-            {waypoints.length > 0 && (
-              <div className="recents" style={{ marginTop: 0, marginBottom: 6 }}>
-                {waypoints.map((w, i) => (
-                  <button key={i} className="chip" onClick={() => removeWaypoint(i)} title="Remove this stop">
-                    {w.title} ✕
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="seg-hint" style={{ marginTop: 0 }}>
+              Search one above the battery slider, say it into the mic on the map, or pick a spot by hand:
+            </div>
             {waypoints.length < 5 && (
-              <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setPickingStop((v) => !v)}>
-                {pickingStop ? 'click the map to add it…' : '+ add a stop (click the map)'}
+              <button className="link-btn" style={{ marginLeft: 0, marginTop: 6 }} onClick={() => setPickingStop((v) => !v)}>
+                {pickingStop ? 'click the map to add it…' : '+ add a stop by clicking the map'}
               </button>
             )}
           </div>
