@@ -67,6 +67,31 @@ const SAFETY_MODES: { value: SafetyMode; label: string }[] = [
 const DEMO_ORIGIN: GeocodeResult = { label: 'Culver City, Los Angeles', lat: 34.0211, lon: -118.3965 }
 const DEMO_DESTINATION: GeocodeResult = { label: 'Mission District, San Francisco', lat: 37.7599, lon: -122.4194 }
 
+// Fiord's roads are darker than its ground (#3C4357 on #45516E), so they
+// vanish at city zoom. These overrides lift roads and state lines to
+// clearly-lighter blues while the ground stays night-dark - checked
+// against the style's real layer ids, applied after every style load.
+const NIGHT_ROAD_TWEAKS: [string, string][] = [
+  ['highway_minor', 'hsl(224, 20%, 60%)'],
+  ['highway_major_inner', 'hsl(224, 28%, 74%)'],
+  ['highway_major_casing', 'hsl(224, 22%, 50%)'],
+  ['highway_major_subtle', 'hsla(224, 28%, 68%, 0.6)'],
+  ['highway_motorway_inner', 'hsl(224, 32%, 80%)'],
+  ['highway_motorway_casing', 'hsl(224, 22%, 52%)'],
+  ['highway_motorway_subtle', 'hsla(224, 32%, 72%, 0.45)'],
+  ['highway_path', 'hsl(211, 24%, 52%)'],
+  ['tunnel_motorway_inner', 'hsl(224, 18%, 44%)'],
+  ['boundary_state', 'hsla(195, 50%, 76%, 0.6)'],
+]
+
+function applyNightRoadContrast(map: maplibregl.Map) {
+  map.once('idle', () => {
+    for (const [id, color] of NIGHT_ROAD_TWEAKS) {
+      if (map.getLayer(id)) map.setPaintProperty(id, 'line-color', color)
+    }
+  })
+}
+
 function App() {
   const [route, setRoute] = useState(window.location.hash)
   useEffect(() => {
@@ -211,6 +236,7 @@ function Planner() {
       setPlan((p) => (p ? { ...p } : p))
       setRouteAlts((r) => (r ? [...r] : r))
     })
+    if (next === 'dark') applyNightRoadContrast(map)
   }
 
   useEffect(() => {
@@ -232,6 +258,7 @@ function Planner() {
     map.once('load', () => {
       map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
     })
+    if (document.documentElement.dataset.theme === 'dark') applyNightRoadContrast(map)
     mapRef.current = map
     return () => map.remove()
   }, [])
