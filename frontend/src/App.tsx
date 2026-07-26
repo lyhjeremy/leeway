@@ -412,7 +412,13 @@ function Planner() {
         (b, c) => b.extend(c as [number, number]),
         new maplibregl.LngLatBounds(plan.geometry[0], plan.geometry[0]),
       )
-      map.fitBounds(bounds, { padding: 60, duration: 500 })
+      // The floating cards cover the map's left and right edges on desktop -
+      // pad the fit so the route isn't hidden underneath them.
+      const overlaid = window.innerWidth > 1000
+      map.fitBounds(bounds, {
+        padding: overlaid ? { top: 90, bottom: 60, left: 410, right: 430 } : 60,
+        duration: 500,
+      })
     }
 
     if (map.isStyleLoaded()) drawRoute()
@@ -642,28 +648,14 @@ function Planner() {
 
   return (
     <div className="app-root">
-      <header className="app-header">
-        <span className="logo-dot" />
-        <span className="logo-word">Leeway</span>
-        <span className="tag">the second opinion before you leave</span>
-        <button className="unit-toggle" onClick={toggleUnits} title="Switch units">
-          {units === 'mi' ? 'mi · °F' : 'km · °C'}
-        </button>
-        <button
-          className="unit-toggle theme-toggle"
-          onClick={toggleTheme}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
-          {theme === 'dark' ? '☀' : '☾'}
-        </button>
-        {/* Only speak up when something's wrong - "backend: connected" was
-            developer talk taking up header space on every visit. */}
-        {apiStatus === 'down' && (
-          <span className="api-chip api-chip--down">can't reach the planner - it may be waking up</span>
-        )}
-      </header>
       <div className="app-body">
         <aside className="panel panel-left">
+          <div className="brand-row">
+            <span className="logo-dot" />
+            <span className="logo-word">Leeway</span>
+            <span className="tag">the second opinion before you leave</span>
+          </div>
+
           <div className="field-group">
             <LocationInput placeholder="Start" dotClass="dot-a" value={origin} onChange={setOrigin} onTextChange={setOriginText} />
             <LocationInput
@@ -956,6 +948,21 @@ function Planner() {
 
         <div className="map-wrap">
           <div ref={mapContainer} className="map" />
+          <div className="float-chips">
+            <button className="unit-toggle" onClick={toggleUnits} title="Switch units">
+              {units === 'mi' ? 'mi · °F' : 'km · °C'}
+            </button>
+            <button
+              className="unit-toggle theme-toggle"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? '☀' : '☾'}
+            </button>
+            {apiStatus === 'down' && (
+              <span className="api-chip api-chip--down">can't reach the planner - it may be waking up</span>
+            )}
+          </div>
           {plan && origin && destination && (
             <VoiceBar origin={origin} destination={destination} onAddStop={handleAddVoiceStop} />
           )}

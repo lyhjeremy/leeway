@@ -1,7 +1,8 @@
 :root {
-  /* Overpass descends from US Highway Gothic - the lettering on the road
-     signs this product plans trips around. Mono variant carries the numbers. */
-  font: 16px/1.5 'Overpass', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Montserrat: the standard open stand-in for Gotham, the typeface Tesla's
+     own interfaces use - geometric, wide, assured. Overpass Mono stays for
+     the small instrument tick-marks only. */
+  font: 15px/1.5 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 * {

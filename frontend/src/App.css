@@ -69,15 +69,12 @@
   }
 }
 
-.app-header {
-  height: 56px;
-  flex: none;
+/* Brand lives inside the floating input card now - Google-style, the map
+   owns the screen and there is no header bar. */
+.brand-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 20px;
-  background: var(--card);
-  border-bottom: 1px solid var(--hair);
+  gap: 10px;
 }
 
 .logo-dot {
@@ -94,12 +91,12 @@
 }
 
 .tag {
-  font-size: 14px;
+  font-size: 12px;
+  line-height: 1.25;
   color: var(--ink2);
 }
 
 .unit-toggle {
-  margin-left: auto;
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 600;
@@ -143,13 +140,12 @@
 
 .app-body {
   flex: 1;
-  display: flex;
+  position: relative;
   min-height: 0;
 }
 
 .panel {
-  width: 352px;
-  flex: none;
+  width: 360px;
   background: var(--card);
   padding: 18px;
   display: flex;
@@ -158,15 +154,38 @@
   overflow-y: auto;
 }
 
-/* Inputs on the left, results on the right - the single panel had grown
-   long enough to need scrolling on a laptop, which buried the verdict. */
+/* Floating cards over the full-bleed map, inputs left and results right,
+   with the map visible in the margins around them. */
+.panel-left,
+.panel-right {
+  position: absolute;
+  top: 16px;
+  max-height: calc(100% - 32px);
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.22);
+  z-index: 5;
+}
+
 .panel-left {
-  border-right: 1px solid var(--hair);
+  left: 16px;
 }
 
 .panel-right {
-  width: 368px;
-  border-left: 1px solid var(--hair);
+  right: 16px;
+  top: 70px;
+  max-height: calc(100% - 86px);
+  width: 384px;
+}
+
+/* Unit/theme chips float on the map's top-right corner. */
+.float-chips {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 6;
 }
 
 .results-empty {
@@ -198,9 +217,8 @@
 }
 
 .map-wrap {
-  position: relative;
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
 }
 
 .map {
@@ -211,10 +229,10 @@
 .voice-bar-wrap {
   position: absolute;
   top: 16px;
-  left: 16px;
-  right: 16px;
-  max-width: 420px;
-  z-index: 10;
+  left: 400px;
+  width: min(420px, calc(100vw - 830px));
+  min-width: 220px;
+  z-index: 4;
 }
 
 .voice-bar {
@@ -423,8 +441,7 @@
 }
 
 .pct-value {
-  font-family: var(--mono);
-  font-size: 16.5px;
+  font-size: 16px;
   font-weight: 700;
   width: 52px;
 }
@@ -479,9 +496,9 @@
   padding: 10px 12px;
   border: 1px solid var(--hair);
   border-radius: 8px;
-  font-size: 15.5px;
+  font-size: 15px;
   font-weight: 600;
-  font-family: var(--mono);
+  font-family: inherit;
 }
 
 .range-unit {
@@ -500,7 +517,7 @@
 .seg button {
   flex: 1;
   text-align: center;
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-family: inherit;
   border: none;
   padding: 11px 4px;
@@ -649,15 +666,13 @@
 }
 
 .verdict .big {
-  font-family: var(--mono);
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
 .verdict .big small {
   display: block;
-  font-family: 'Overpass', system-ui, sans-serif;
   font-size: 15px;
   font-weight: 500;
   color: var(--ink2);
@@ -885,9 +900,9 @@
   padding: 10px 12px;
   border: 1px solid var(--hair);
   border-radius: 8px;
-  font-size: 15.5px;
+  font-size: 15px;
   font-weight: 600;
-  font-family: var(--mono);
+  font-family: inherit;
 }
 
 .link-btn {
@@ -1171,7 +1186,7 @@
    App.tsx (an unhovered popup disappears in ~300ms), not by killing
    pointer events. */
 .maplibregl-popup-content {
-  font-family: 'Overpass', system-ui, sans-serif;
+  font-family: 'Montserrat', system-ui, sans-serif;
   background: var(--card);
   border: 1px solid var(--hair);
   border-radius: 10px;
@@ -1265,8 +1280,30 @@
    narrow laptop windows stack too. */
 @media (max-width: 1000px) {
   .app-body {
+    display: flex;
     flex-direction: column;
     overflow-y: auto;
+  }
+
+  .map-wrap {
+    position: relative;
+    inset: auto;
+  }
+
+  .panel-left,
+  .panel-right {
+    position: static;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+    border: none;
+  }
+
+  .voice-bar-wrap {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    min-width: 0;
   }
 
   /* Sizing goes on .map-wrap (the actual flex child of .app-body) - the old
@@ -1311,12 +1348,7 @@
 
 /* Small screens only */
 @media (max-width: 720px) {
-  .app-header {
-    padding: 0 12px;
-    gap: 8px;
-  }
-
-  .tag {
+  .brand-row .tag {
     display: none;
   }
 
