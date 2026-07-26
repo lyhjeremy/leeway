@@ -24,6 +24,13 @@ export interface ChargingStop {
 
 export type StopMode = 'fewest_stops' | 'fastest_trip' | 'best_amenities'
 
+export interface WeatherInfo {
+  adjustment: number
+  summary: string
+  temp_f: number
+  headwind_mph: number
+}
+
 export interface PlanResponse {
   distance_mi: number
   duration_min: number
@@ -34,4 +41,5 @@ export interface PlanResponse {
   leeway_mi: number
   stops: ChargingStop[]
   note: string | null
+  weather: WeatherInfo | null
 }

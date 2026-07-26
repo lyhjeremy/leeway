@@ -275,6 +275,7 @@ function Planner() {
                   {plan.distance_mi} mi · {plan.stops.length} stop{plan.stops.length === 1 ? '' : 's'} ·{' '}
                   {Math.round(plan.duration_min / 60)} h {plan.duration_min % 60} min total
                 </div>
+                {plan.weather && <div className="sub">Weather included: {plan.weather.summary}</div>}
                 {plan.note && <div className="sub note">{plan.note}</div>}
               </div>
 

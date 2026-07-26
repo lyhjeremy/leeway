@@ -1,22 +1,25 @@
 """Trip-aware range estimate.
 
-Not a physics simulator - a documented, honest heuristic. Two adjustments on
-top of a flat mi-per-% baseline, both real, well-known EV effects:
+Not a physics simulator - a documented, honest heuristic. Three adjustments
+on top of a flat mi-per-% baseline, all real, well-known EV effects:
 
 1. Highway driving costs more energy per mile than mixed/city driving at EV
    speeds (aero drag scales with v^2). +15% consumption on the highway
    fraction of the trip is a commonly cited real-world delta for a car like
    the Model 3, not a made-up number, but it is still an approximation - the
-   real value varies by speed, wind, and temperature (temperature/wind are
-   Stage 2, not modeled here yet).
+   real value varies by speed, wind, and temperature.
 2. Net elevation gain costs real energy; net elevation loss recovers some of
    it via regenerative braking, but not all - round-trip regen efficiency is
    commonly cited around 60-70%. ~180 Wh per 100 ft climbed is a standard
    rule-of-thumb for a car in this weight class (~3600 lb); at this car's
    ~250 Wh/mi baseline that is roughly 0.7 equivalent miles per 100 ft of net
    climb, and descent is credited back at 60% of that.
+3. Temperature and headwind (Stage 2) - see weather_adjustment_fraction.
+   Fetched once per plan as a trip-day snapshot, not per-leg or per-segment;
+   weather varies continuously, so one snapshot is already an approximation
+   and a more granular one wouldn't be meaningfully more honest.
 
-Both constants are named below so they're easy to revisit once Stage 5's
+All constants are named below so they're easy to revisit once Stage 5's
 real logged-trip data exists to calibrate against - that's the whole point
 of Stage 5, not something to fake precision on now.
 """
@@ -28,6 +31,55 @@ from .geo import FT_PER_METER
 HIGHWAY_CONSUMPTION_PENALTY = 0.15  # +15% energy/mile on the highway fraction
 EQUIV_MI_PER_100FT_CLIMB = 0.7
 REGEN_RECOVERY_EFFICIENCY = 0.6  # fraction of climb-penalty recovered on descent
+
+# Weather adjustment (Stage 2). Cold is the dominant real EV effect - widely
+# cited real-world tests show roughly 20-30% range loss around freezing vs a
+# ~70F mild baseline; 0.6%/degF below 60F over a ~30F gap to freezing lands
+# in that band without pretending more precision than a single trip-day
+# weather snapshot deserves. Heat's effect (AC load) is real but smaller.
+# Headwind cost is modeled the same way as the highway penalty (aero drag),
+# since a real Model 3 delivers observably worse mileage against a stiff
+# headwind and observably better with a tailwind at rest of it. All three
+# terms are added to the same consumption multiplier as HIGHWAY_CONSUMPTION_
+# PENALTY, then clamped - see weather_adjustment_fraction.
+TEMP_COLD_REFERENCE_F = 60.0
+TEMP_HOT_REFERENCE_F = 85.0
+COLD_PENALTY_FRAC_PER_DEGF = 0.006
+HOT_PENALTY_FRAC_PER_DEGF = 0.003
+WIND_PENALTY_FRAC_PER_MPH = 0.008
+WEATHER_ADJUSTMENT_CLAMP = (-0.25, 0.5)  # a very strong tailwind still can't imply free energy
+
+
+def weather_adjustment_fraction(temp_f: float, headwind_mph: float) -> float:
+    """Extra fractional consumption multiplier from temperature and wind,
+    added alongside HIGHWAY_CONSUMPTION_PENALTY's highway term - positive
+    means the trip uses more energy per mile, negative means less (e.g. a
+    tailwind)."""
+    cold = max(0.0, TEMP_COLD_REFERENCE_F - temp_f) * COLD_PENALTY_FRAC_PER_DEGF
+    hot = max(0.0, temp_f - TEMP_HOT_REFERENCE_F) * HOT_PENALTY_FRAC_PER_DEGF
+    wind = headwind_mph * WIND_PENALTY_FRAC_PER_MPH
+    lo, hi = WEATHER_ADJUSTMENT_CLAMP
+    return max(lo, min(hi, cold + hot + wind))
+
+
+def describe_weather(temp_f: float, headwind_mph: float) -> str:
+    """'74F, light headwind' style summary - shown so drivers can see
+    weather wasn't ignored, per the product plan."""
+    if headwind_mph >= 20:
+        wind_desc = "strong headwind"
+    elif headwind_mph >= 10:
+        wind_desc = "moderate headwind"
+    elif headwind_mph >= 3:
+        wind_desc = "light headwind"
+    elif headwind_mph <= -20:
+        wind_desc = "strong tailwind"
+    elif headwind_mph <= -10:
+        wind_desc = "moderate tailwind"
+    elif headwind_mph <= -3:
+        wind_desc = "light tailwind"
+    else:
+        wind_desc = "calm wind"
+    return f"{round(temp_f)}°F, {wind_desc}"
 
 # Charge-time estimate only (never used for the range/feasibility numbers
 # above). 250 Wh/mi is a commonly cited combined-efficiency figure for a
@@ -73,6 +125,7 @@ def distance_to_floor_mi(
     highway_fraction: float,
     reserve_pct: float = 15.0,
     reserve_mi: float = 30.0,
+    weather_adjustment: float = 0.0,
 ) -> float:
     """Roughly how far the car can go before hitting the reserve floor,
     ignoring elevation entirely. Kept only as a cheap fallback when no real
@@ -84,7 +137,7 @@ def distance_to_floor_mi(
     this formula spreads the trip's *net* elevation change evenly across the
     whole distance instead of respecting where the climbing actually happens."""
     baseline_pct_per_mi = 100.0 / full_range_mi
-    effective_pct_per_mi = baseline_pct_per_mi * (1 + HIGHWAY_CONSUMPTION_PENALTY * highway_fraction)
+    effective_pct_per_mi = baseline_pct_per_mi * (1 + HIGHWAY_CONSUMPTION_PENALTY * highway_fraction + weather_adjustment)
     floor = reserve_floor_pct(full_range_mi, reserve_pct, reserve_mi)
     return max(0.0, (start_pct - floor) / effective_pct_per_mi)
 
@@ -94,6 +147,7 @@ def cumulative_pct_used(
     elevations_m: list[float],
     full_range_mi: float,
     highway_fraction: float,
+    weather_adjustment: float = 0.0,
 ) -> list[float]:
     """Per-vertex cumulative %-of-battery-used, walking real segment-level
     distance and elevation change - not a net-elevation average. This is
@@ -104,7 +158,7 @@ def cumulative_pct_used(
     breakdown isn't reliable enough per-segment to do better - see
     providers.py), same limitation as estimate_arrival."""
     baseline_pct_per_mi = 100.0 / full_range_mi
-    effective_pct_per_mi = baseline_pct_per_mi * (1 + HIGHWAY_CONSUMPTION_PENALTY * highway_fraction)
+    effective_pct_per_mi = baseline_pct_per_mi * (1 + HIGHWAY_CONSUMPTION_PENALTY * highway_fraction + weather_adjustment)
 
     pct_used = [0.0]
     for i in range(1, len(cum_mi)):
@@ -142,6 +196,7 @@ def distance_to_floor_mi_elevation_aware(
     highway_fraction: float,
     reserve_pct: float = 15.0,
     reserve_mi: float = 30.0,
+    weather_adjustment: float = 0.0,
 ) -> float:
     """Where the reserve floor is actually hit along this specific route,
     using real per-vertex elevation. Falls back to the flat estimate only if
@@ -150,7 +205,7 @@ def distance_to_floor_mi_elevation_aware(
     but returning the route's full length rather than raising is the safer
     failure mode)."""
     target_pct_used = start_pct - reserve_floor_pct(full_range_mi, reserve_pct, reserve_mi)
-    pct_used = cumulative_pct_used(cum_mi, elevations_m, full_range_mi, highway_fraction)
+    pct_used = cumulative_pct_used(cum_mi, elevations_m, full_range_mi, highway_fraction, weather_adjustment)
     for i in range(1, len(pct_used)):
         if pct_used[i] >= target_pct_used:
             seg_pct = pct_used[i] - pct_used[i - 1]
@@ -168,9 +223,10 @@ def estimate_arrival(
     descent_ft: float,
     reserve_pct: float = 15.0,
     reserve_mi: float = 30.0,
+    weather_adjustment: float = 0.0,
 ) -> RangeEstimate:
     baseline_pct_per_mi = 100.0 / full_range_mi
-    effective_pct_per_mi = baseline_pct_per_mi * (1 + HIGHWAY_CONSUMPTION_PENALTY * highway_fraction)
+    effective_pct_per_mi = baseline_pct_per_mi * (1 + HIGHWAY_CONSUMPTION_PENALTY * highway_fraction + weather_adjustment)
 
     climb_penalty_mi = (ascent_ft / 100.0) * EQUIV_MI_PER_100FT_CLIMB
     descent_credit_mi = (descent_ft / 100.0) * EQUIV_MI_PER_100FT_CLIMB * REGEN_RECOVERY_EFFICIENCY

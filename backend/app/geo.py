@@ -53,3 +53,26 @@ def nearest_route_distance_mi(coords: list[tuple[float, float]], cum: list[float
         if d < best_d:
             best_d, best_i = d, i
     return cum[best_i]
+
+
+def bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Initial great-circle bearing from point 1 to point 2, degrees 0-360
+    (0=north, 90=east). Used as a single trip-wide travel direction for the
+    headwind calculation - a real route curves, but one bearing for a
+    same-day weather snapshot is already an approximation, so a second
+    approximation here (straight-line origin-to-destination bearing instead
+    of per-segment) doesn't materially change anything."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dl = math.radians(lon2 - lon1)
+    x = math.sin(dl) * math.cos(p2)
+    y = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    return math.degrees(math.atan2(x, y)) % 360
+
+
+def headwind_component_mph(wind_speed_mph: float, wind_from_deg: float, travel_bearing_deg: float) -> float:
+    """Positive = headwind, negative = tailwind. wind_from_deg is the
+    meteorological convention (direction the wind blows FROM). A headwind is
+    maximal when the wind blows from the direction you're heading towards -
+    i.e. wind_from_deg aligned with travel_bearing_deg."""
+    angle_diff = math.radians(wind_from_deg - travel_bearing_deg)
+    return wind_speed_mph * math.cos(angle_diff)

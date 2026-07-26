@@ -1,6 +1,8 @@
-"""Thin clients for the two external data sources this backend depends on:
-OpenRouteService (geocoding + directions + elevation, needs a free API key)
-and Open Charge Map (charging stations, no key needed under 250 results/call).
+"""Thin clients for the external data sources this backend depends on:
+OpenRouteService (geocoding + directions + elevation, needs a free API key),
+Open Charge Map (charging stations, no key needed under 250 results/call),
+and Open-Meteo (current weather, no key needed at all - confirmed via a real
+call, not assumed).
 """
 
 import os
@@ -13,6 +15,7 @@ ORS_API_KEY = os.environ.get("ORS_API_KEY", "")
 OCM_API_KEY = os.environ.get("OCM_API_KEY", "")
 ORS_BASE = "https://api.openrouteservice.org"
 OCM_BASE = "https://api.openchargemap.io/v3"
+METEO_BASE = "https://api.open-meteo.com/v1"
 
 # California bounding box - biases geocoding results since this product is
 # CA-only for now, per the product plan.
@@ -187,3 +190,30 @@ async def find_charging_stations(lat: float, lon: float, radius_mi: float = 15, 
             "connector_count": len(conns),
         })
     return [s for s in out if s["lat"] is not None and s["lon"] is not None]
+
+
+async def current_weather(lat: float, lon: float) -> dict:
+    """No API key needed at all - real call confirmed working. Returns a
+    trip-day snapshot at one point (the route's midpoint - see planner.py),
+    not per-segment; weather varies continuously along any real route, so a
+    single snapshot is already the honest level of precision here."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            f"{METEO_BASE}/forecast",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "current": "temperature_2m,wind_speed_10m,wind_direction_10m",
+                "temperature_unit": "fahrenheit",
+                "wind_speed_unit": "mph",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    current = data["current"]
+    return {
+        "temp_f": current["temperature_2m"],
+        "wind_speed_mph": current["wind_speed_10m"],
+        "wind_from_deg": current["wind_direction_10m"],
+    }

@@ -24,7 +24,7 @@ never decides feasibility on its own.
 import httpx
 
 from . import providers, range_model
-from .geo import cumulative_distances_mi, nearest_route_distance_mi, point_at_distance
+from .geo import bearing_deg, cumulative_distances_mi, headwind_component_mph, nearest_route_distance_mi, point_at_distance
 
 SEARCH_RADII_MI = [15, 30, 50]  # widen if nothing pans out, before giving up
 STOP_MODE_WINDOW_MI = 20
@@ -41,7 +41,7 @@ MIN_CHARGING_KW = 20
 
 def _rank_candidates(route: dict, start_pct: float, full_range_mi: float,
                       reserve_pct: float, reserve_mi: float, stop_mode: str,
-                      stations: list[dict]) -> list[dict]:
+                      stations: list[dict], weather_adjustment: float = 0.0) -> list[dict]:
     """Best-first list of power-filtered, approximately-reachable candidates.
     Approximate only - see module docstring. Never trusted as final feasibility.
 
@@ -56,10 +56,10 @@ def _rank_candidates(route: dict, start_pct: float, full_range_mi: float,
     hypothetical."""
     coords = route["geometry"]
     cum = cumulative_distances_mi(coords)
-    pct_used_curve = range_model.cumulative_pct_used(cum, route["elevations_m"], full_range_mi, route["highway_fraction"])
+    pct_used_curve = range_model.cumulative_pct_used(cum, route["elevations_m"], full_range_mi, route["highway_fraction"], weather_adjustment)
     floor = range_model.reserve_floor_pct(full_range_mi, reserve_pct, reserve_mi)
     target_mi = range_model.distance_to_floor_mi_elevation_aware(
-        cum, route["elevations_m"], full_range_mi, start_pct, route["highway_fraction"], reserve_pct, reserve_mi,
+        cum, route["elevations_m"], full_range_mi, start_pct, route["highway_fraction"], reserve_pct, reserve_mi, weather_adjustment,
     )
 
     candidates = []
@@ -117,6 +117,9 @@ async def plan_trip(
     total_distance_mi = 0.0
     total_duration_min = 0.0
 
+    weather = await _trip_weather(origin, destination)
+    weather_adjustment = weather["adjustment"] if weather else 0.0
+
     current_start = origin
     current_pct = battery_pct
     note = None
@@ -135,7 +138,7 @@ async def plan_trip(
 
         estimate = range_model.estimate_arrival(
             full_range_mi, current_pct, remaining["distance_mi"], remaining["highway_fraction"],
-            remaining["ascent_ft"], remaining["descent_ft"], reserve_pct, reserve_mi,
+            remaining["ascent_ft"], remaining["descent_ft"], reserve_pct, reserve_mi, weather_adjustment,
         )
 
         if estimate.feasible:
@@ -147,7 +150,7 @@ async def plan_trip(
             feasible = True
             break
 
-        search_lat, search_lon = _search_point(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi)
+        search_lat, search_lon = _search_point(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, weather_adjustment)
         chosen = None
         chosen_leg = None
         chosen_leg_estimate = None
@@ -156,7 +159,7 @@ async def plan_trip(
             stations = await providers.find_charging_stations(search_lat, search_lon, radius_mi=radius)
             if not stations:
                 continue
-            ranked = _rank_candidates(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, stop_mode, stations)
+            ranked = _rank_candidates(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, stop_mode, stations, weather_adjustment)
 
             for candidate in ranked[:MAX_CANDIDATES_VERIFIED_PER_RADIUS]:
                 leg_to_stop = await _safe_directions(current_start, (candidate["lat"], candidate["lon"]), avoid_tolls, avoid_highways)
@@ -170,7 +173,7 @@ async def plan_trip(
                     continue
                 leg_estimate = range_model.estimate_arrival(
                     full_range_mi, current_pct, leg_to_stop["distance_mi"], leg_to_stop["highway_fraction"],
-                    leg_to_stop["ascent_ft"], leg_to_stop["descent_ft"], reserve_pct, reserve_mi,
+                    leg_to_stop["ascent_ft"], leg_to_stop["descent_ft"], reserve_pct, reserve_mi, weather_adjustment,
                 )
                 if leg_estimate.feasible:
                     chosen, chosen_leg, chosen_leg_estimate = candidate, leg_to_stop, leg_estimate
@@ -236,14 +239,38 @@ async def plan_trip(
         "leeway_mi": round(final_leeway_mi, 1),
         "stops": stops_out,
         "note": note,
+        "weather": weather,  # None if the weather fetch failed - see _trip_weather
     }
 
 
-def _search_point(route: dict, start_pct: float, full_range_mi: float, reserve_pct: float, reserve_mi: float):
+def _search_point(route: dict, start_pct: float, full_range_mi: float, reserve_pct: float, reserve_mi: float, weather_adjustment: float = 0.0):
     coords = route["geometry"]
     cum = cumulative_distances_mi(coords)
     target_mi = range_model.distance_to_floor_mi_elevation_aware(
-        cum, route["elevations_m"], full_range_mi, start_pct, route["highway_fraction"], reserve_pct, reserve_mi,
+        cum, route["elevations_m"], full_range_mi, start_pct, route["highway_fraction"], reserve_pct, reserve_mi, weather_adjustment,
     )
     lon, lat = point_at_distance(coords, cum, target_mi)
     return lat, lon
+
+
+async def _trip_weather(origin: tuple[float, float], destination: tuple[float, float]) -> dict | None:
+    """One trip-day snapshot at the route's rough midpoint - not per-leg or
+    per-segment (weather varies continuously anyway, so a single snapshot is
+    already the honest precision level here). Weather is a nice-to-have
+    honesty add-on, not core routing infra, so a fetch failure degrades to
+    "no adjustment" rather than failing the whole plan."""
+    try:
+        mid_lat = (origin[0] + destination[0]) / 2
+        mid_lon = (origin[1] + destination[1]) / 2
+        weather = await providers.current_weather(mid_lat, mid_lon)
+    except httpx.HTTPError:
+        return None
+
+    bearing = bearing_deg(origin[0], origin[1], destination[0], destination[1])
+    headwind = headwind_component_mph(weather["wind_speed_mph"], weather["wind_from_deg"], bearing)
+    return {
+        "adjustment": range_model.weather_adjustment_fraction(weather["temp_f"], headwind),
+        "summary": range_model.describe_weather(weather["temp_f"], headwind),
+        "temp_f": weather["temp_f"],
+        "headwind_mph": round(headwind, 1),
+    }
