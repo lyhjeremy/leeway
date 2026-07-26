@@ -1,0 +1,45 @@
+name: Deploy backend to Hugging Face Space
+on:
+  push:
+    branches: [main]
+    paths: ['backend/**']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Requires repo secrets: HF_TOKEN (write), and variable HF_SPACE (e.g. lyhjeremy/leeway-api)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push backend/ to the Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ vars.HF_SPACE }}
+        run: |
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_SPACE" ]; then
+            echo "HF_TOKEN/HF_SPACE not configured yet - skipping."
+            exit 0
+          fi
+          # Incremental commit onto the Space's real history (clone -> replace
+          # files -> commit -> push), not a fresh orphan force-push every run
+          # - that pattern proved unreliable in an earlier project (Spaces
+          # sometimes never rebuilt despite push + restart both reporting success).
+          rm -rf /tmp/space_deploy
+          git clone --depth 1 "https://lyhjeremy:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" /tmp/space_deploy
+          find /tmp/space_deploy -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -a backend/. /tmp/space_deploy/
+          cd /tmp/space_deploy
+          git config user.name "Jeremy Lee"
+          git config user.email "lyhjeremy@gmail.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No file changes to deploy."
+          else
+            git commit -m "Deploy backend: ${GITHUB_SHA::7}"
+            git push origin HEAD:main
+            echo "Pushed incremental commit $(git rev-parse --short HEAD)."
+          fi
+          HTTP_CODE=$(curl -s -o /tmp/reboot_resp.json -w "%{http_code}" -X POST \
+            "https://huggingface.co/api/spaces/${HF_SPACE}/restart" \
+            -H "Authorization: Bearer ${HF_TOKEN}") || true
+          echo "restart -> HTTP $HTTP_CODE: $(cat /tmp/reboot_resp.json 2>/dev/null)"

@@ -1,0 +1,69 @@
+.app-root {
+  --page: #f9f9f7;
+  --card: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink2: #52514e;
+  --muted: #898781;
+  --hair: #e1e0d9;
+  --go-green: #008300;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--page);
+  color: var(--ink);
+}
+
+.app-header {
+  height: 56px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  background: var(--card);
+  border-bottom: 1px solid var(--hair);
+}
+
+.logo-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--go-green);
+}
+
+.logo-word {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.tag {
+  font-size: 13px;
+  color: var(--ink2);
+}
+
+.api-chip {
+  margin-left: auto;
+  font-size: 12.5px;
+  padding: 5px 12px;
+  border-radius: 99px;
+  border: 1px solid var(--hair);
+  color: var(--muted);
+}
+
+.api-chip--ok {
+  color: var(--go-green);
+  border-color: #d7e5d4;
+  background: #f6faf5;
+}
+
+.api-chip--down {
+  color: #b23b3b;
+  border-color: #f0d6d6;
+  background: #fbf3f3;
+}
+
+.map {
+  flex: 1;
+  min-height: 0;
+}
