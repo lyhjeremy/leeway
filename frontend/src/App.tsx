@@ -958,14 +958,24 @@ function Planner() {
             </div>
           )}
 
-          {plan && (
+          {/* A rate-limited plan with nothing in it has no real numbers to
+              show - "Arrive at 68%" would just echo the starting battery
+              with a straight face. Say what happened and stop there. */}
+          {plan && plan.rate_limited && plan.distance_mi === 0 && (
+            <div className="verdict verdict-bad">
+              <div className="status">⚠ Planning couldn't run</div>
+              {plan.note && <div className="sub note">{plan.note}</div>}
+            </div>
+          )}
+
+          {plan && !(plan.rate_limited && plan.distance_mi === 0) && (
             <>
               <div className={`verdict ${plan.feasible ? 'verdict-ok' : 'verdict-bad'}`}>
                 <div className="status">
                   {plan.feasible
                     ? '✓ Makeable with your reserve'
                     : plan.rate_limited
-                      ? '⚠ Planning got interrupted - plan again in a minute'
+                      ? '⚠ Planning got interrupted partway - try again in a little while'
                       : plan.stops.length > 0
                         ? "⚠ Plan incomplete - couldn't lock in the leg after your last stop"
                         : plan.arrival_pct < 0
