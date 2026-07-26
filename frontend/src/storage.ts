@@ -41,6 +41,17 @@ export function saveUnits(units: 'mi' | 'km') {
   storageSet('local', UNITS_KEY, units)
 }
 
+const THEME_KEY = 'leeway.theme'
+
+export function loadTheme(): 'light' | 'dark' | null {
+  const t = storageGet('local', THEME_KEY)
+  return t === 'dark' || t === 'light' ? t : null
+}
+
+export function saveTheme(theme: 'light' | 'dark') {
+  storageSet('local', THEME_KEY, theme)
+}
+
 export function loadFullRangeMi(): number | null {
   const raw = storageGet('local', RANGE_KEY)
   return raw ? Number(raw) : null

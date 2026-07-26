@@ -15,7 +15,36 @@
   --sc-blue: #2a6fc9;
   --ccs-orange: #e2622b;
   --warn: #e5a916;
+  --ink-contrast: #ffffff; /* text sitting on an ink-colored surface */
+  --bad-text: #b23b3b;
+  --bad-border: #f0d6d6;
+  --bad-bg: #fbf3f3;
   --mono: 'Overpass Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+/* The same roadside palette after dark: green-tinted near-blacks, chalky
+   ink, and brighter charge-state colors so they hold contrast. Set on
+   <html> before first paint by main.tsx; a saved choice beats the system
+   preference. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --page: #171a15;
+  --card: #21251f;
+  --ink: #eceee7;
+  --ink2: #b6bcae;
+  --muted: #848b7c;
+  --hair: #383d34;
+  --go-green: #4fae63;
+  --go-text: #6cc47e;
+  --amber-text: #d9a83f;
+  --reserve-red: #d97b7b;
+  --sc-blue: #6aa2e8;
+  --ccs-orange: #ef7f4f;
+  --warn: #e5a916;
+  --ink-contrast: #171a15;
+  --bad-text: #e08585;
+  --bad-border: #5a3535;
+  --bad-bg: #2b1f1f;
 }
 
 .app-root {
@@ -86,6 +115,12 @@
   color: var(--ink);
 }
 
+.theme-toggle {
+  margin-left: 0; /* only the first header chip pushes right */
+  font-size: 15px;
+  line-height: 1;
+}
+
 .api-chip {
   font-size: 13.5px;
   padding: 5px 12px;
@@ -101,9 +136,9 @@
 }
 
 .api-chip--down {
-  color: #b23b3b;
-  border-color: #f0d6d6;
-  background: #fbf3f3;
+  color: var(--bad-text);
+  border-color: var(--bad-border);
+  background: var(--bad-bg);
 }
 
 .app-body {
@@ -236,7 +271,7 @@
 }
 
 .voice-chip-error {
-  color: #b23b3b;
+  color: var(--bad-text);
 }
 
 .voice-query {
@@ -476,7 +511,7 @@
 
 .seg button.on {
   background: var(--ink);
-  color: #fff;
+  color: var(--ink-contrast);
   font-weight: 600;
 }
 
@@ -561,7 +596,7 @@
 
 .plan-btn {
   background: var(--ink);
-  color: #fff;
+  color: var(--ink-contrast);
   border: none;
   border-radius: 12px;
   padding: 15px 20px;
@@ -588,9 +623,9 @@
 
 .error-box {
   font-size: 14.5px;
-  color: #b23b3b;
-  background: #fbf3f3;
-  border: 1px solid #f0d6d6;
+  color: var(--bad-text);
+  background: var(--bad-bg);
+  border: 1px solid var(--bad-border);
   border-radius: 10px;
   padding: 10px 12px;
 }
@@ -610,7 +645,7 @@
 }
 
 .verdict-bad .status {
-  color: #9a6b00;
+  color: var(--amber-text);
 }
 
 .verdict .big {
@@ -688,12 +723,12 @@
 }
 
 .verdict .note {
-  color: #9a6b00;
+  color: var(--amber-text);
   font-weight: 600;
 }
 
 .verdict .safety-flag {
-  color: #9a6b00;
+  color: var(--amber-text);
 }
 
 .itin {
@@ -792,9 +827,11 @@
 }
 
 .recents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   font-size: 13.5px;
   color: var(--muted);
-  margin-top: -6px;
 }
 
 .chip {
@@ -806,7 +843,6 @@
   font-family: inherit;
   color: var(--ink2);
   background: var(--card);
-  margin-left: 4px;
   cursor: pointer;
 }
 
@@ -816,7 +852,7 @@
 
 .chip-on {
   background: var(--ink);
-  color: #fff;
+  color: var(--ink-contrast);
   border-color: var(--ink);
 }
 
@@ -886,7 +922,7 @@
   left: 50%;
   transform: translateX(-50%);
   background: var(--ink);
-  color: #fff;
+  color: var(--ink-contrast);
   padding: 10px 18px;
   border-radius: 99px;
   font-size: 13px;
@@ -1141,6 +1177,22 @@
   border-radius: 10px;
   padding: 10px 13px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+}
+
+.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--card);
+}
+
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--card);
+}
+
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--card);
+}
+
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--card);
 }
 
 .pop-title {

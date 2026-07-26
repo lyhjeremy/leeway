@@ -30,6 +30,7 @@ import {
   saveFullRangeMi,
   savePendingTrip,
   saveRecentTrip,
+  saveTheme,
   saveUnits,
   shouldPromptForPendingTrip,
   type PendingTrip,
@@ -137,6 +138,18 @@ function Planner() {
     const next = units === 'mi' ? 'km' : 'mi'
     setUnits(next)
     saveUnits(next)
+  }
+
+  // main.tsx already stamped the theme on <html> before first paint.
+  const [theme, setTheme] = useState<'light' | 'dark'>(
+    () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'),
+  )
+
+  function toggleTheme() {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    saveTheme(next)
+    document.documentElement.dataset.theme = next
   }
 
   useEffect(() => {
@@ -636,6 +649,13 @@ function Planner() {
         <button className="unit-toggle" onClick={toggleUnits} title="Switch units">
           {units === 'mi' ? 'mi · °F' : 'km · °C'}
         </button>
+        <button
+          className="unit-toggle theme-toggle"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? '☀' : '☾'}
+        </button>
         {/* Only speak up when something's wrong - "backend: connected" was
             developer talk taking up header space on every visit. */}
         {apiStatus === 'down' && (
@@ -695,13 +715,15 @@ function Planner() {
           </div>
 
           {recentTrips.length > 0 && (
-            <div className="recents">
-              Recent:{' '}
-              {recentTrips.map((t, i) => (
-                <button key={i} className="chip" onClick={() => pickRecentTrip(t)}>
-                  {t.origin.label.split(',')[0]} → {t.destination.label.split(',')[0]}
-                </button>
-              ))}
+            <div>
+              <div className="row-label">Recent trips</div>
+              <div className="recents">
+                {recentTrips.map((t, i) => (
+                  <button key={i} className="chip" onClick={() => pickRecentTrip(t)}>
+                    {t.origin.label.split(',')[0]} → {t.destination.label.split(',')[0]}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
