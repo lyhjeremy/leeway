@@ -26,8 +26,8 @@ from datetime import datetime, timezone
 
 import httpx
 
-from . import providers, range_model, safety, sun
-from .geo import bearing_deg, cumulative_distances_mi, headwind_component_mph, nearest_route_distance_mi, point_at_distance
+from . import crossings, providers, range_model, safety, sun
+from .geo import bearing_deg, cumulative_distances_mi, headwind_component_mph, nearest_route_point, point_at_distance
 
 SEARCH_RADII_MI = [15, 30, 50]  # widen if nothing pans out, before giving up
 STOP_MODE_WINDOW_MI = 20
@@ -40,6 +40,19 @@ MAX_CANDIDATES_VERIFIED_PER_RADIUS = 8  # real-directions calls are not free API
 # a candidate alongside a real Tesla Supercharger at the same location.
 # Below this threshold isn't a realistic road-trip stop, full stop.
 MIN_CHARGING_KW = 20
+
+# How much each mile of perpendicular offset from the route costs in the
+# ranking, found by a real failure: a 50kW bank parking lot in Fillmore
+# (17mi off I-5) outranked an on-route 250kW Supercharger because its
+# projection landed 10mi farther up the road and the sort only looked at
+# distance-along-route. A detour costs at least the drive out and back
+# (2x), plus it's slower non-highway driving - hence 2.5.
+OFFSET_PENALTY = 2.5
+
+# Two stations within this distance of each other are one physical location
+# (e.g. three OCM entries for the same Fillmore parking lot) - verifying
+# each against ORS wastes rate-limited quota re-testing the same spot.
+DEDUPE_RADIUS_MI = 0.3
 
 
 def _rank_candidates(route: dict, start_pct: float, full_range_mi: float,
@@ -69,23 +82,63 @@ def _rank_candidates(route: dict, start_pct: float, full_range_mi: float,
     for s in stations:
         if s["max_kw"] < MIN_CHARGING_KW:
             continue
-        dist_along = nearest_route_distance_mi(coords, cum, s["lat"], s["lon"])
+        dist_along, offset_mi = nearest_route_point(coords, cum, s["lat"], s["lon"])
         approx_arrival_pct = start_pct - range_model.pct_used_at_distance(cum, pct_used_curve, dist_along)
+        # Net progress: how far along the trip this stop really gets you,
+        # after paying for the detour to reach it. Without the offset term
+        # a charger far off-route can outrank an on-route one purely
+        # because its perpendicular projection lands farther up the road.
+        net_progress_mi = dist_along - OFFSET_PENALTY * offset_mi
         # _approx_feasible is a ranking signal only, never a filter - the
         # approximation can still be wrong (it doesn't know the real driving
         # distance to a charger set back from the route), so an
         # "infeasible"-looking candidate still gets tried for real, just
         # after the more promising ones.
-        candidates.append({**s, "distance_along_route_mi": dist_along, "_approx_feasible": approx_arrival_pct >= floor})
+        candidates.append({
+            **s,
+            "distance_along_route_mi": dist_along,
+            "offset_mi": offset_mi,
+            "_net_progress_mi": net_progress_mi,
+            "_approx_feasible": approx_arrival_pct >= floor,
+        })
 
     if stop_mode == "fastest_trip":
-        candidates.sort(key=lambda c: (not c["_approx_feasible"], abs(c["distance_along_route_mi"] - target_mi) > STOP_MODE_WINDOW_MI, -c["max_kw"]))
+        candidates.sort(key=lambda c: (not c["_approx_feasible"], abs(c["_net_progress_mi"] - target_mi) > STOP_MODE_WINDOW_MI, -c["max_kw"]))
     elif stop_mode == "best_amenities":
-        candidates.sort(key=lambda c: (not c["_approx_feasible"], abs(c["distance_along_route_mi"] - target_mi) > STOP_MODE_WINDOW_MI, -c["connector_count"]))
+        candidates.sort(key=lambda c: (not c["_approx_feasible"], abs(c["_net_progress_mi"] - target_mi) > STOP_MODE_WINDOW_MI, -c["connector_count"]))
     else:
-        candidates.sort(key=lambda c: (not c["_approx_feasible"], -c["distance_along_route_mi"]))
+        candidates.sort(key=lambda c: (not c["_approx_feasible"], -c["_net_progress_mi"]))
 
-    return candidates
+    return _dedupe_by_location(candidates)
+
+
+def _dedupe_by_location(ranked: list[dict]) -> list[dict]:
+    """Collapse multiple OCM entries for the same physical parking lot,
+    keeping the best-ranked one (list is already in rank order). Saves
+    real ORS verification calls - three co-located Fillmore entries were
+    being verified back-to-back against the same answer."""
+    kept: list[dict] = []
+    for c in ranked:
+        dup = any(
+            abs(c["lat"] - k["lat"]) < DEDUPE_RADIUS_MI / 69.0
+            and abs(c["lon"] - k["lon"]) < DEDUPE_RADIUS_MI / 55.0
+            for k in kept
+        )
+        if not dup:
+            kept.append(c)
+    return kept
+
+
+class RateLimited(Exception):
+    """ORS's per-minute quota is exhausted and stayed exhausted through the
+    backoff. Deliberately distinct from a 404: a rate-limited candidate is
+    NOT unroutable, and treating it that way made the planner claim 'no
+    charger exists in the Central Valley' on a leg where dozens do - the
+    real failure a user hit on a 3-stop LA->SF plan where legs 1-3 had
+    already burned most of the minute's quota."""
+
+
+_RETRY_DELAYS_S = [2, 8, 20]
 
 
 async def _safe_directions(origin, destination, avoid_tolls, avoid_highways):
@@ -98,20 +151,19 @@ async def _safe_directions(origin, destination, avoid_tolls, avoid_highways):
     here" means for the plan; this helper only avoids duplicating the
     try/except at each of them.
 
-    A 429 (rate limited) is NOT the same situation as a 404 and is handled
-    separately here with one retry after a short backoff - a real forced-stop
-    test (two full nested plan_trip calls, each issuing many ORS requests)
-    hit ORS's per-minute rate limit and the 429 was being silently treated
-    as "no route exists," which is wrong: the route very likely exists, ORS
-    just needs a moment. Only degrades to None if the retry also fails."""
-    for attempt in range(2):
+    A 429 is retried with growing backoff (ORS's directions quota is
+    per-minute, so a 20s wait genuinely helps where a 2s one may not) and
+    raises RateLimited if the quota never frees up - never None, because
+    "no route exists" and "stop asking for a minute" need different plans."""
+    for attempt, delay in enumerate([*_RETRY_DELAYS_S, None]):
         try:
             return await providers.directions(origin, destination, avoid_tolls, avoid_highways)
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429 and attempt == 0:
-                await asyncio.sleep(2)
-                continue
-            return None
+            if e.response.status_code != 429:
+                return None
+            if delay is None:
+                raise RateLimited()
+            await asyncio.sleep(delay)
 
 
 async def plan_trip(
@@ -165,6 +217,7 @@ async def plan_trip(
                 "reachable": leg1["feasible"],
             }] + leg2["stops"],
             "note": leg1["note"] or leg2["note"],
+            "rate_limited": leg1["rate_limited"] or leg2["rate_limited"],
             "weather": leg1["weather"],
             "safety_flags": leg1["safety_flags"] + leg2["safety_flags"],
         }
@@ -181,9 +234,21 @@ async def plan_trip(
     current_start = origin
     current_pct = battery_pct
     note = None
+    rate_limited = False
 
     for _ in range(MAX_STOPS + 1):
-        remaining = await _safe_directions(current_start, destination, avoid_tolls, avoid_highways)
+        try:
+            remaining = await _safe_directions(current_start, destination, avoid_tolls, avoid_highways)
+        except RateLimited:
+            note = (
+                "The routing provider's per-minute limit interrupted planning partway - "
+                "everything up to here is real, the rest is unplanned. Try again in a minute."
+            )
+            final_arrival_pct = current_pct
+            final_leeway_mi = 0.0
+            feasible = False
+            rate_limited = True
+            break
         if remaining is None:
             note = (
                 "No route found from the current point to the destination under these constraints "
@@ -213,42 +278,79 @@ async def plan_trip(
         chosen = None
         chosen_leg = None
         chosen_leg_estimate = None
+        # A wider radius re-returns every station the smaller radius already
+        # had - without this, candidates that already failed verification get
+        # re-verified at each radius, burning the same rate-limited quota on
+        # the same answer.
+        already_failed_ids: set = set()
 
-        for radius in SEARCH_RADII_MI:
-            stations = await providers.find_charging_stations(search_lat, search_lon, radius_mi=radius)
-            if excluded_station_ids:
-                stations = [s for s in stations if s["id"] not in excluded_station_ids]
-            if not stations:
-                continue
-            ranked = _rank_candidates(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, stop_mode, stations, weather_adjustment)
-
-            for candidate in ranked[:MAX_CANDIDATES_VERIFIED_PER_RADIUS]:
-                leg_to_stop = await _safe_directions(current_start, (candidate["lat"], candidate["lon"]), avoid_tolls, avoid_highways)
-                if leg_to_stop is None:
-                    # A specific candidate can be genuinely unroutable under
-                    # the current constraints (e.g. only reachable via a
-                    # highway when avoid_highways is on) - ORS returns a real
-                    # 404 for that pair. One bad candidate shouldn't kill the
-                    # whole plan; just try the next one. Confirmed via a real
-                    # avoid_highways request that hit exactly this.
+        ocm_failed = False
+        try:
+            for radius in SEARCH_RADII_MI:
+                try:
+                    stations = await providers.find_charging_stations(search_lat, search_lon, radius_mi=radius)
+                except httpx.HTTPError:
+                    # A flaky station lookup is "couldn't check here", not
+                    # "no chargers here" - remembered so the no-charger note
+                    # below can say which one actually happened.
+                    ocm_failed = True
                     continue
-                leg_estimate = range_model.estimate_arrival(
-                    full_range_mi, current_pct, leg_to_stop["distance_mi"], leg_to_stop["highway_fraction"],
-                    leg_to_stop["ascent_ft"], leg_to_stop["descent_ft"], reserve_pct, reserve_mi, weather_adjustment,
-                )
-                if leg_estimate.feasible:
-                    chosen, chosen_leg, chosen_leg_estimate = candidate, leg_to_stop, leg_estimate
-                    break
+                if excluded_station_ids:
+                    stations = [s for s in stations if s["id"] not in excluded_station_ids]
+                if not stations:
+                    continue
+                ranked = _rank_candidates(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, stop_mode, stations, weather_adjustment)
+                ranked = [c for c in ranked if c["id"] not in already_failed_ids]
 
-            if chosen is not None:
-                break
+                for candidate in ranked[:MAX_CANDIDATES_VERIFIED_PER_RADIUS]:
+                    leg_to_stop = await _safe_directions(current_start, (candidate["lat"], candidate["lon"]), avoid_tolls, avoid_highways)
+                    if leg_to_stop is None:
+                        # A specific candidate can be genuinely unroutable under
+                        # the current constraints (e.g. only reachable via a
+                        # highway when avoid_highways is on) - ORS returns a real
+                        # 404 for that pair. One bad candidate shouldn't kill the
+                        # whole plan; just try the next one. Confirmed via a real
+                        # avoid_highways request that hit exactly this.
+                        already_failed_ids.add(candidate["id"])
+                        continue
+                    leg_estimate = range_model.estimate_arrival(
+                        full_range_mi, current_pct, leg_to_stop["distance_mi"], leg_to_stop["highway_fraction"],
+                        leg_to_stop["ascent_ft"], leg_to_stop["descent_ft"], reserve_pct, reserve_mi, weather_adjustment,
+                    )
+                    if leg_estimate.feasible:
+                        chosen, chosen_leg, chosen_leg_estimate = candidate, leg_to_stop, leg_estimate
+                        break
+                    already_failed_ids.add(candidate["id"])
+
+                if chosen is not None:
+                    break
+        except RateLimited:
+            note = (
+                "The routing provider's per-minute limit interrupted planning partway - "
+                "everything up to here is real, the rest is unplanned. Try again in a minute."
+            )
+            leg_geometries.append(remaining["geometry"])
+            leg_elevations.append(remaining["elevations_m"])
+            total_distance_mi += remaining["distance_mi"]
+            total_duration_min += remaining["duration_min"]
+            final_arrival_pct = estimate.arrival_pct
+            final_leeway_mi = estimate.leeway_mi
+            feasible = False
+            rate_limited = True
+            break
 
         if chosen is None:
-            note = (
-                f"No fast charger ({MIN_CHARGING_KW}kW or more) checked out as reachable within "
-                f"{SEARCH_RADII_MI[-1]} miles of where the battery would hit reserve. "
-                "Treat everything past that point as unplanned."
-            )
+            if ocm_failed:
+                note = (
+                    "The charging-station data source failed while planning this leg - "
+                    "there may well be a charger here that couldn't be checked. Try again shortly."
+                )
+            else:
+                note = (
+                    f"No fast charger ({MIN_CHARGING_KW}kW or more) checked out as reachable within "
+                    f"{SEARCH_RADII_MI[-1]} miles of where the battery would hit reserve. "
+                    "Treat everything past that point as unplanned."
+                )
             leg_geometries.append(remaining["geometry"])
             leg_elevations.append(remaining["elevations_m"])
             total_distance_mi += remaining["distance_mi"]
@@ -293,7 +395,7 @@ async def plan_trip(
 
     geometry = [pt for leg in leg_geometries for pt in leg]
     elevations_m = [e for leg in leg_elevations for e in leg]
-    safety_flags = _find_safety_flags(origin, destination, geometry, elevations_m)
+    safety_flags = await _find_safety_flags(origin, destination, geometry, elevations_m, weather)
 
     return {
         "distance_mi": round(total_distance_mi, 1),
@@ -305,17 +407,20 @@ async def plan_trip(
         "leeway_mi": round(final_leeway_mi, 1),
         "stops": stops_out,
         "note": note,
+        "rate_limited": rate_limited,  # true = retrying in a minute may fully fix this plan
         "weather": weather,  # None if the weather fetch failed - see _trip_weather
         "safety_flags": safety_flags,
     }
 
 
-def _find_safety_flags(origin: tuple[float, float], destination: tuple[float, float],
-                        geometry: list[tuple[float, float]], elevations_m: list[float]) -> list[dict]:
-    """Steep descents (real elevation, sorted most severe first) plus one
-    sun-glare check using the trip's overall bearing and a 'departing now'
-    assumption - see safety.py and sun.py for why these two flags don't need
-    Overpass/OSM data the other five in the product plan do."""
+async def _find_safety_flags(origin: tuple[float, float], destination: tuple[float, float],
+                              geometry: list[tuple[float, float]], elevations_m: list[float],
+                              weather: dict | None) -> list[dict]:
+    """Steep descents (real elevation, most severe first), a sun-glare check
+    from the trip bearing, a strong-wind flag from the same weather snapshot
+    the range math uses, and the Overpass-backed checks (unprotected lefts,
+    rail crossings) - which degrade to no-flags when Overpass is down, never
+    to a failed plan."""
     if len(geometry) < 2:
         return []
     cum = cumulative_distances_mi(geometry)
@@ -327,6 +432,25 @@ def _find_safety_flags(origin: tuple[float, float], destination: tuple[float, fl
     glare = sun.check_sun_glare(mid_lat, mid_lon, datetime.now(timezone.utc), bearing)
     if glare:
         flags.append(glare)
+
+    if weather and weather.get("wind_speed_mph", 0) >= 25:
+        flags.append({
+            "kind": "strong_wind",
+            "description": (
+                f"{round(weather['wind_speed_mph'])} mph winds today - the range math already "
+                "accounts for the head/tailwind component, but expect buffeting, especially "
+                "in gusts and around trucks."
+            ),
+            "lat": None,
+            "lon": None,
+        })
+
+    left_flags, rail_flags = await asyncio.gather(
+        crossings.unprotected_left_flags(geometry, cum),
+        crossings.rail_crossing_flags(geometry, cum),
+    )
+    flags.extend(left_flags)
+    flags.extend(rail_flags)
     return flags
 
 
@@ -360,4 +484,5 @@ async def _trip_weather(origin: tuple[float, float], destination: tuple[float, f
         "summary": range_model.describe_weather(weather["temp_f"], headwind),
         "temp_f": weather["temp_f"],
         "headwind_mph": round(headwind, 1),
+        "wind_speed_mph": weather["wind_speed_mph"],  # raw speed for the strong-wind safety flag
     }

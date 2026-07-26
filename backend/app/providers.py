@@ -223,6 +223,22 @@ async def current_weather(lat: float, lon: float) -> dict:
     }
 
 
+async def overpass_raw(query: str) -> dict:
+    """Run any Overpass QL query with the retry loop this flaky public
+    instance needs (see search_overpass's docstring for the evidence).
+    Shared by the POI search and the safety-flag crossing checks."""
+    headers = {"User-Agent": "Leeway-EV-Trip-Planner/0.1 (github.com/lyhjeremy/leeway)"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        for attempt in range(4):
+            resp = await client.post(OVERPASS_BASE, data={"data": query}, headers=headers)
+            if resp.status_code in (406, 429, 503, 504) and attempt < 3:
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+            resp.raise_for_status()
+            return resp.json()
+    return {"elements": []}
+
+
 async def search_overpass(bbox: tuple[float, float, float, float], tag_filters: list[tuple[str, str]], max_results: int = 60) -> list[dict]:
     """bbox is (min_lat, min_lon, max_lat, max_lon). tag_filters is a list of
     (key, value) pairs, OR'd together (e.g. [("amenity","cafe"),("shop","coffee")]).
@@ -242,18 +258,7 @@ async def search_overpass(bbox: tuple[float, float, float, float], tag_filters: 
     bbox_str = f"{min_lat},{min_lon},{max_lat},{max_lon}"
     clauses = "".join(f'node["{k}"="{v}"]({bbox_str});' for k, v in tag_filters)
     query = f"[out:json][timeout:20];({clauses});out center {max_results};"
-
-    headers = {"User-Agent": "Leeway-EV-Trip-Planner/0.1 (github.com/lyhjeremy/leeway)"}
-    data = None
-    async with httpx.AsyncClient(timeout=25) as client:
-        for attempt in range(4):
-            resp = await client.post(OVERPASS_BASE, data={"data": query}, headers=headers)
-            if resp.status_code in (406, 429, 503, 504) and attempt < 3:
-                await asyncio.sleep(2 * (attempt + 1))
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-            break
+    data = await overpass_raw(query)
 
     out = []
     for el in data.get("elements", []):

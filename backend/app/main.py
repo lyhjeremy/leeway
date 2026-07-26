@@ -12,7 +12,7 @@ from .voice import VoiceSearchError, find_stops
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.7.1"
+VERSION = "0.8.0"
 
 app = FastAPI(title="Leeway API")
 

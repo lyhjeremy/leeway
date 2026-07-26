@@ -26,12 +26,14 @@ export interface ChargingStop {
 export type StopMode = 'fewest_stops' | 'fastest_trip' | 'best_amenities'
 
 export interface SafetyFlag {
-  type: 'steep_descent' | 'sun_glare'
+  type?: 'steep_descent' | 'sun_glare'
+  kind?: 'unprotected_left' | 'rail_crossing' | 'strong_wind'
   description: string
-  lat?: number
-  lon?: number
+  lat?: number | null
+  lon?: number | null
   length_mi?: number
   grade_pct?: number
+  mile?: number
 }
 
 export interface WeatherInfo {
@@ -73,6 +75,7 @@ export interface PlanResponse {
   leeway_mi: number
   stops: ChargingStop[]
   note: string | null
+  rate_limited: boolean
   weather: WeatherInfo | null
   safety_flags: SafetyFlag[]
 }

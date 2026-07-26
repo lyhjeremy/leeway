@@ -167,16 +167,51 @@ function Planner() {
           new maplibregl.Marker({ color: '#0b0b0b' }).setLngLat([destination.lon, destination.lat]).addTo(map),
         )
       }
+      // One shared popup: hover previews it, tap/click pins it (mobile has
+      // no hover), clicking the map closes it. Content is built with DOM
+      // nodes, not an HTML string - station titles come from OCM and
+      // shouldn't be able to inject markup.
+      const popup = new maplibregl.Popup({ closeButton: false, offset: 16, maxWidth: '260px' })
+      const attachPopup = (el: HTMLElement, lon: number, lat: number, lines: [string, ...string[]]) => {
+        const show = () => {
+          const box = document.createElement('div')
+          const title = document.createElement('div')
+          title.className = 'pop-title'
+          title.textContent = lines[0]
+          box.appendChild(title)
+          for (const line of lines.slice(1)) {
+            const sub = document.createElement('div')
+            sub.className = 'pop-sub'
+            sub.textContent = line
+            box.appendChild(sub)
+          }
+          popup.setLngLat([lon, lat]).setDOMContent(box).addTo(map)
+        }
+        el.addEventListener('mouseenter', show)
+        el.addEventListener('mouseleave', () => popup.remove())
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          show()
+        })
+      }
+
       for (const stop of plan.stops) {
         const el = document.createElement('div')
         el.className = stop.is_supercharger ? 'pin pin-supercharger' : 'pin pin-ccs'
+        attachPopup(el, stop.lon, stop.lat, [
+          stop.title,
+          `${stop.network}${stop.max_kw ? ` · up to ${Math.round(stop.max_kw)} kW` : ''}`,
+          `Arrive ${stop.arrive_pct}% → charge to ${stop.charge_to_pct}%${
+            stop.charge_time_min ? ` (~${stop.charge_time_min} min)` : ''
+          }`,
+        ])
         markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([stop.lon, stop.lat]).addTo(map))
       }
       for (const flag of plan.safety_flags) {
         if (flag.lat == null || flag.lon == null) continue
         const el = document.createElement('div')
         el.className = 'pin-hazard'
-        el.title = flag.description
+        attachPopup(el, flag.lon, flag.lat, ['Heads up', flag.description])
         markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([flag.lon, flag.lat]).addTo(map))
       }
 
@@ -428,9 +463,13 @@ function Planner() {
                 <div className="status">
                   {plan.feasible
                     ? '✓ Makeable with your reserve'
-                    : plan.arrival_pct < 0
-                      ? "⚠ Won't make it as planned - charge before you leave"
-                      : '⚠ Tight - check the plan below'}
+                    : plan.rate_limited
+                      ? '⚠ Planning got interrupted - plan again in a minute'
+                      : plan.stops.length > 0
+                        ? "⚠ Plan incomplete - couldn't lock in the leg after your last stop"
+                        : plan.arrival_pct < 0
+                          ? "⚠ Won't make it as planned - charge before you leave"
+                          : '⚠ Tight - check the plan below'}
                 </div>
                 <div className="big">
                   {plan.arrival_pct < 0
@@ -459,11 +498,13 @@ function Planner() {
                   {Math.round(plan.duration_min / 60)} h {plan.duration_min % 60} min total
                 </div>
                 {plan.weather && <div className="sub">Range adjusted for {plan.weather.summary}</div>}
-                {plan.safety_flags.length > 0 && (
-                  <div className="sub safety-flag">
-                    ⚠ {plan.safety_flags[0].description}
-                    {plan.safety_flags.length > 1 && ` (+${plan.safety_flags.length - 1} more)`}
+                {plan.safety_flags.slice(0, 3).map((f, i) => (
+                  <div className="sub safety-flag" key={i}>
+                    ⚠ {f.description}
                   </div>
+                ))}
+                {plan.safety_flags.length > 3 && (
+                  <div className="sub safety-flag">+{plan.safety_flags.length - 3} more flagged on the map</div>
                 )}
                 {plan.note && <div className="sub note">{plan.note}</div>}
               </div>
