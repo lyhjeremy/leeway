@@ -30,10 +30,10 @@
   color-scheme: dark;
   --page: #171a15;
   --card: #21251f;
-  --ink: #eceee7;
-  --ink2: #b6bcae;
-  --muted: #848b7c;
-  --hair: #383d34;
+  --ink: #f4f5ee;
+  --ink2: #ccd2c1;
+  --muted: #9ba491;
+  --hair: #42473c;
   --go-green: #4fae63;
   --go-text: #6cc47e;
   --amber-text: #d9a83f;
@@ -367,8 +367,49 @@
   font-size: 15.5px;
 }
 
-.location-input + .location-input {
+.route-row {
+  display: flex;
+  align-items: center;
+}
+
+.route-row + .route-row {
   border-top: 1px solid var(--hair);
+}
+
+.route-row .location-input {
+  flex: 1;
+}
+
+.route-row.drop-target {
+  box-shadow: inset 0 0 0 2px var(--sc-blue);
+  border-radius: 10px;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--muted);
+  padding-left: 10px;
+  font-size: 13px;
+  user-select: none;
+  flex: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.row-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 0 12px;
+  flex: none;
+}
+
+.row-remove:hover {
+  color: var(--bad-text);
 }
 
 .location-input input {
@@ -405,10 +446,6 @@
   border: 2.5px solid var(--muted);
   background: none;
   flex: none;
-}
-
-.waypoint-area {
-  margin-top: -6px;
 }
 
 .location-results {

@@ -103,7 +103,11 @@ function Planner() {
   // itself instead of demanding a dropdown interaction.
   const [originText, setOriginText] = useState(DEMO_ORIGIN.label)
   const [destText, setDestText] = useState(DEMO_DESTINATION.label)
-  const [showWaypointSearch, setShowWaypointSearch] = useState(false)
+  // Middle stops live between origin and destination as editable rows; a
+  // null entry is an empty row being typed into. Cap of three keeps trips
+  // honest - beyond that you're planning a tour, not a drive.
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [batteryPct, setBatteryPct] = useState(68)
   const [fullRangeMi, setFullRangeMi] = useState<number>(() => loadFullRangeMi() ?? 205)
   const [stopMode, setStopMode] = useState<StopMode>('fewest_stops')
@@ -125,7 +129,7 @@ function Planner() {
   const [showCarSetup, setShowCarSetup] = useState(false)
   const [recentTrips, setRecentTrips] = useState<RecentTrip[]>(() => loadRecentTrips())
   const [excludedStationIds, setExcludedStationIds] = useState<number[]>([])
-  const [waypoints, setWaypoints] = useState<Waypoint[]>([])
+  const [waypoints, setWaypoints] = useState<(GeocodeResult | null)[]>([])
   const [routeAlts, setRouteAlts] = useState<RouteAlt[] | null>(null)
   const [chosenAlt, setChosenAlt] = useState(0)
   const [pickingStop, setPickingStop] = useState(false)
@@ -193,13 +197,27 @@ function Planner() {
     setTheme(next)
     saveTheme(next)
     document.documentElement.dataset.theme = next
+    // The map gets its own night: swap the whole style, then force the
+    // route effect to re-run once the new style loads - setStyle wipes
+    // every source, layer, and the collapsed-attribution state.
+    const map = mapRef.current
+    if (!map) return
+    map.setStyle(next === 'dark' ? 'https://tiles.openfreemap.org/styles/dark' : 'https://tiles.openfreemap.org/styles/liberty')
+    map.once('styledata', () => {
+      map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
+      setPlan((p) => (p ? { ...p } : p))
+      setRouteAlts((r) => (r ? [...r] : r))
+    })
   }
 
   useEffect(() => {
     if (!mapContainer.current) return
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: 'https://tiles.openfreemap.org/styles/liberty',
+      style:
+        document.documentElement.dataset.theme === 'dark'
+          ? 'https://tiles.openfreemap.org/styles/dark'
+          : 'https://tiles.openfreemap.org/styles/liberty',
       center: [-120.5, 36.2],
       zoom: 5.6,
       // Collapses the attribution to an (i) button - the full line wrapped
@@ -222,7 +240,7 @@ function Planner() {
     if (!pickingStop) return
 
     const onClick = (e: maplibregl.MapMouseEvent) => {
-      const next = [...waypoints, { lat: e.lngLat.lat, lon: e.lngLat.lng, title: `Map stop ${waypoints.length + 1}` }]
+      const next = [...waypoints, { label: `Map stop ${waypoints.length + 1}`, lat: e.lngLat.lat, lon: e.lngLat.lng }]
       setWaypoints(next)
       setPickingStop(false)
       runPlan({ excludedStationIds, waypoints: next })
@@ -293,6 +311,11 @@ function Planner() {
     if (plan.geometry.length < 2) return
 
     const drawRoute = () => {
+      // Colors read at draw time so a theme toggle (which re-triggers this
+      // effect after the style swap) picks the right contrast.
+      const dark = document.documentElement.dataset.theme === 'dark'
+      const routeColor = dark ? '#e8eadf' : '#2f2e2b'
+      const markerColor = dark ? '#e8eadf' : '#0b0b0b'
       const geojson = {
         type: 'Feature' as const,
         properties: {},
@@ -301,13 +324,14 @@ function Planner() {
       const existing = map.getSource('route') as maplibregl.GeoJSONSource | undefined
       if (existing) {
         existing.setData(geojson)
+        map.setPaintProperty('route-line', 'line-color', routeColor)
       } else {
         map.addSource('route', { type: 'geojson', data: geojson })
         map.addLayer({
           id: 'route-line',
           type: 'line',
           source: 'route',
-          paint: { 'line-color': '#2f2e2b', 'line-width': 5 },
+          paint: { 'line-color': routeColor, 'line-width': 5 },
         })
       }
 
@@ -316,12 +340,12 @@ function Planner() {
 
       if (origin) {
         markersRef.current.push(
-          new maplibregl.Marker({ color: '#0b0b0b' }).setLngLat([origin.lon, origin.lat]).addTo(map),
+          new maplibregl.Marker({ color: markerColor }).setLngLat([origin.lon, origin.lat]).addTo(map),
         )
       }
       if (destination) {
         markersRef.current.push(
-          new maplibregl.Marker({ color: '#0b0b0b' }).setLngLat([destination.lon, destination.lat]).addTo(map),
+          new maplibregl.Marker({ color: markerColor }).setLngLat([destination.lon, destination.lat]).addTo(map),
         )
       }
 
@@ -465,8 +489,14 @@ function Planner() {
 
   async function runPlan(overrides: {
     excludedStationIds: number[]
-    waypoints: Waypoint[]
+    waypoints: (GeocodeResult | null)[]
     via?: { lat: number; lon: number } | null
+    // After a drag-reorder the setState calls haven't landed when the
+    // replan fires - the new endpoints must ride along explicitly or the
+    // request goes out with the pre-drag origin/destination (found by a
+    // real drag test: the rows swapped, the request didn't).
+    origin?: GeocodeResult | null
+    destination?: GeocodeResult | null
   }) {
     // A cleared number input reads as 0, which the backend (rightly) refuses.
     if (!Number.isFinite(fullRangeMi) || fullRangeMi < 50 || fullRangeMi > 600) {
@@ -497,8 +527,8 @@ function Planner() {
     // Resolve typed-but-never-picked places right here - requiring a
     // dropdown pick made Plan fail whenever the dropdown flaked (slow
     // backend wake-up, a tap elsewhere closing it).
-    let o = origin
-    let d = destination
+    let o = overrides.origin !== undefined ? overrides.origin : origin
+    let d = overrides.destination !== undefined ? overrides.destination : destination
     if (!o || !d) {
       try {
         if (!o && originText.trim().length >= 3) o = (await geocode(originText))[0] ?? null
@@ -522,7 +552,9 @@ function Planner() {
       }
     }
     try {
-      const allWaypoints = [...overrides.waypoints]
+      const allWaypoints: Waypoint[] = overrides.waypoints
+        .filter((w): w is GeocodeResult => w !== null)
+        .map((w) => ({ lat: w.lat, lon: w.lon, title: w.label.split(',')[0] }))
       if (overrides.via) {
         allWaypoints.push({ ...overrides.via, title: 'via', hidden: true })
       }
@@ -557,7 +589,15 @@ function Planner() {
         feasible: result.feasible,
       })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong planning that trip.')
+      // A network-level failure surfaces as TypeError('Failed to fetch') -
+      // raw browser-speak that reads like a bug. Say what it usually means.
+      setError(
+        e instanceof TypeError
+          ? "Can't reach the planner right now - it may be waking up. Try again in a moment."
+          : e instanceof Error
+            ? e.message
+            : 'Something went wrong planning that trip.',
+      )
       setPlan(null)
     } finally {
       setLoading(false)
@@ -583,15 +623,60 @@ function Planner() {
   function removeWaypoint(index: number) {
     const next = waypoints.filter((_, i) => i !== index)
     setWaypoints(next)
-    runPlan({ excludedStationIds, waypoints: next, via: currentVia() })
+    if (waypoints[index] !== null) runPlan({ excludedStationIds, waypoints: next, via: currentVia() })
   }
 
   function handleAddVoiceStop(lat: number, lon: number, title: string) {
     // A voice-found stop is just another waypoint - same mechanism as
-    // clicking the map, not a separate insertion path.
-    const next = [...waypoints, { lat, lon, title }]
+    // typing one into a row, not a separate insertion path.
+    if (waypoints.length >= 3) return
+    const next = [...waypoints, { label: title, lat, lon }]
     setWaypoints(next)
     runPlan({ excludedStationIds, waypoints: next, via: currentVia() })
+  }
+
+  function handleRoutePointChange(i: number, r: GeocodeResult | null) {
+    const last = waypoints.length + 1
+    if (i === 0) {
+      setOrigin(r)
+      if (r) setOriginText(r.label)
+      return
+    }
+    if (i === last) {
+      setDestination(r)
+      if (r) setDestText(r.label)
+      return
+    }
+    const mids = [...waypoints]
+    mids[i - 1] = r
+    setWaypoints(mids)
+    if (r && origin && destination) runPlan({ excludedStationIds, waypoints: mids, via: currentVia() })
+  }
+
+  // Any point can trade places with any other - start, stops, destination.
+  function handleRouteDrop() {
+    if (dragIdx === null || dragOverIdx === null || dragIdx === dragOverIdx) {
+      setDragIdx(null)
+      setDragOverIdx(null)
+      return
+    }
+    const list: (GeocodeResult | null)[] = [origin, ...waypoints, destination]
+    const [moved] = list.splice(dragIdx, 1)
+    list.splice(dragOverIdx, 0, moved)
+    const newOrigin = list[0]
+    const newDest = list[list.length - 1]
+    const mids = list.slice(1, -1)
+    setOrigin(newOrigin)
+    setOriginText(newOrigin?.label ?? '')
+    setDestination(newDest)
+    setDestText(newDest?.label ?? '')
+    setWaypoints(mids)
+    setDragIdx(null)
+    setDragOverIdx(null)
+    setChosenAlt(0) // a picked corridor belonged to the old point order
+    if (newOrigin && newDest) {
+      runPlan({ excludedStationIds, waypoints: mids, via: null, origin: newOrigin, destination: newDest })
+    }
   }
 
   async function handleCompareRoutes() {
@@ -676,7 +761,7 @@ function Planner() {
     safetyMode !== 'flag_only',
     avoidTolls,
     avoidHighways,
-    waypoints.length > 0,
+    waypoints.some(Boolean),
     chargeToPct !== 80,
     reservePct !== 15,
     arrivalTargetPct > 0,
@@ -695,55 +780,66 @@ function Planner() {
             <span className="tag">the second opinion before you leave</span>
           </div>
 
+          {/* One editable list: start, up to three stops, destination -
+              every row drags to trade places with any other. */}
           <div className="field-group">
-            <LocationInput placeholder="Start" dotClass="dot-a" value={origin} onChange={setOrigin} onTextChange={setOriginText} />
-            <LocationInput
-              placeholder="Destination"
-              dotClass="dot-b"
-              value={destination}
-              onChange={setDestination}
-              onTextChange={setDestText}
-            />
+            {[origin, ...waypoints, destination].map((pt, i, arr) => {
+              const isFirst = i === 0
+              const isLast = i === arr.length - 1
+              return (
+                <div
+                  key={`${i}-${arr.length}`}
+                  className={`route-row${
+                    dragOverIdx === i && dragIdx !== null && dragIdx !== i ? ' drop-target' : ''
+                  }`}
+                  draggable={dragIdx === i}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    setDragOverIdx(i)
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    handleRouteDrop()
+                  }}
+                  onDragEnd={() => {
+                    setDragIdx(null)
+                    setDragOverIdx(null)
+                  }}
+                >
+                  <span
+                    className="drag-handle"
+                    title="Drag to reorder"
+                    onMouseDown={() => setDragIdx(i)}
+                    onMouseUp={() => setDragIdx(null)}
+                  >
+                    ⠿
+                  </span>
+                  <LocationInput
+                    placeholder={isFirst ? 'Start' : isLast ? 'Destination' : 'Search a stop along the way'}
+                    dotClass={isFirst ? 'dot-a' : isLast ? 'dot-b' : 'dot-wp'}
+                    value={pt}
+                    onChange={(r) => handleRoutePointChange(i, r)}
+                    onTextChange={isFirst ? setOriginText : isLast ? setDestText : undefined}
+                  />
+                  {!isFirst && !isLast && (
+                    <button className="row-remove" onClick={() => removeWaypoint(i - 1)} title="Remove this stop">
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )
+            })}
           </div>
 
-          <div className="waypoint-area">
-            {waypoints.length > 0 && (
-              <div className="recents" style={{ marginTop: 0 }}>
-                {waypoints.map((w, i) => (
-                  <button key={i} className="chip" onClick={() => removeWaypoint(i)} title="Remove this stop">
-                    {w.title} ✕
-                  </button>
-                ))}
-              </div>
-            )}
-            {showWaypointSearch && waypoints.length < 5 ? (
-              <div className="field-group" style={{ marginTop: waypoints.length > 0 ? 8 : 0 }}>
-                <LocationInput
-                  key={waypoints.length}
-                  placeholder="Search a stop along the way"
-                  dotClass="dot-wp"
-                  value={null}
-                  onChange={(r) => {
-                    if (!r) return
-                    const next = [...waypoints, { lat: r.lat, lon: r.lon, title: r.label.split(',')[0] }]
-                    setWaypoints(next)
-                    setShowWaypointSearch(false)
-                    runPlan({ excludedStationIds, waypoints: next, via: currentVia() })
-                  }}
-                />
-              </div>
-            ) : (
-              waypoints.length < 5 && (
-                <button
-                  className="link-btn"
-                  style={{ marginLeft: 0, marginTop: waypoints.length > 0 ? 6 : 0 }}
-                  onClick={() => setShowWaypointSearch(true)}
-                >
-                  + add a stop along the way
-                </button>
-              )
-            )}
-          </div>
+          {waypoints.length < 3 && (
+            <button
+              className="link-btn"
+              style={{ marginLeft: 0, marginTop: -4 }}
+              onClick={() => setWaypoints([...waypoints, null])}
+            >
+              + add a stop along the way
+            </button>
+          )}
 
           {recentTrips.length > 0 && (
             <div>
@@ -828,9 +924,9 @@ function Planner() {
           <div>
             <div className="row-label">Your stops along the way</div>
             <div className="seg-hint" style={{ marginTop: 0 }}>
-              Search one above the battery slider, say it into the mic on the map, or pick a spot by hand:
+              Search one in the route list up top, say it into the mic on the map, or pick a spot by hand:
             </div>
-            {waypoints.length < 5 && (
+            {waypoints.length < 3 && (
               <button className="link-btn" style={{ marginLeft: 0, marginTop: 6 }} onClick={() => setPickingStop((v) => !v)}>
                 {pickingStop ? 'click the map to add it…' : '+ add a stop by clicking the map'}
               </button>
