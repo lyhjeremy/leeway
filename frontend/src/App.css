@@ -372,6 +372,14 @@
   align-items: center;
 }
 
+/* While a drag is live, inputs must not accept the drop - the browser's
+   default for text dropped on an input is to PASTE it in, which read as
+   "dragging replaces the other cell's content". The row is the only
+   drop target. */
+.field-group.dragging input {
+  pointer-events: none;
+}
+
 .route-row + .route-row {
   border-top: 1px solid var(--hair);
 }

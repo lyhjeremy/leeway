@@ -108,6 +108,9 @@ function Planner() {
   // honest - beyond that you're planning a tour, not a drive.
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  // Bumped after every reorder so the rows remount and re-read their
+  // values - without it a row's inner text can stay with its old position.
+  const [orderVersion, setOrderVersion] = useState(0)
   const [batteryPct, setBatteryPct] = useState(68)
   const [fullRangeMi, setFullRangeMi] = useState<number>(() => loadFullRangeMi() ?? 205)
   const [stopMode, setStopMode] = useState<StopMode>('fewest_stops')
@@ -202,7 +205,7 @@ function Planner() {
     // every source, layer, and the collapsed-attribution state.
     const map = mapRef.current
     if (!map) return
-    map.setStyle(next === 'dark' ? 'https://tiles.openfreemap.org/styles/dark' : 'https://tiles.openfreemap.org/styles/liberty')
+    map.setStyle(next === 'dark' ? 'https://tiles.openfreemap.org/styles/fiord' : 'https://tiles.openfreemap.org/styles/liberty')
     map.once('styledata', () => {
       map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
       setPlan((p) => (p ? { ...p } : p))
@@ -216,7 +219,7 @@ function Planner() {
       container: mapContainer.current,
       style:
         document.documentElement.dataset.theme === 'dark'
-          ? 'https://tiles.openfreemap.org/styles/dark'
+          ? 'https://tiles.openfreemap.org/styles/fiord'
           : 'https://tiles.openfreemap.org/styles/liberty',
       center: [-120.5, 36.2],
       zoom: 5.6,
@@ -298,7 +301,7 @@ function Planner() {
       })
     }
     if (map.isStyleLoaded()) draw()
-    else map.once('load', draw)
+    else map.once('idle', draw)
   }, [routeAlts])
 
   useEffect(() => {
@@ -483,8 +486,10 @@ function Planner() {
       map.fitBounds(bounds, { padding: fitPadding(), duration: 500 })
     }
 
+    // 'idle', not 'load': load fires once per map lifetime, so a theme
+    // swap (setStyle) left this waiting forever - route gone, stale markers.
     if (map.isStyleLoaded()) drawRoute()
-    else map.once('load', drawRoute)
+    else map.once('idle', drawRoute)
   }, [plan, origin, destination])
 
   async function runPlan(overrides: {
@@ -673,6 +678,7 @@ function Planner() {
     setWaypoints(mids)
     setDragIdx(null)
     setDragOverIdx(null)
+    setOrderVersion((v) => v + 1)
     setChosenAlt(0) // a picked corridor belonged to the old point order
     if (newOrigin && newDest) {
       runPlan({ excludedStationIds, waypoints: mids, via: null, origin: newOrigin, destination: newDest })
@@ -782,17 +788,23 @@ function Planner() {
 
           {/* One editable list: start, up to three stops, destination -
               every row drags to trade places with any other. */}
-          <div className="field-group">
+          <div className={`field-group${dragIdx !== null ? ' dragging' : ''}`}>
             {[origin, ...waypoints, destination].map((pt, i, arr) => {
               const isFirst = i === 0
               const isLast = i === arr.length - 1
               return (
                 <div
-                  key={`${i}-${arr.length}`}
+                  key={`${orderVersion}-${i}-${arr.length}`}
                   className={`route-row${
                     dragOverIdx === i && dragIdx !== null && dragIdx !== i ? ' drop-target' : ''
                   }`}
                   draggable={dragIdx === i}
+                  onDragStart={(e) => {
+                    // Firefox needs data to start a drag at all; empty text
+                    // also means a stray default-drop pastes nothing.
+                    e.dataTransfer.setData('text/plain', '')
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
                   onDragOver={(e) => {
                     e.preventDefault()
                     setDragOverIdx(i)
