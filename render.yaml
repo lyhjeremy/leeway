@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: leeway-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit

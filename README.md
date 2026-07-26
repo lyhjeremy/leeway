@@ -9,20 +9,24 @@ stop search. Full product plan: `../LEEWAY_PRODUCT_PLAN.md` (one level up,
 not in this repo — this repo is the codebase only).
 
 **Live:** frontend at https://lyhjeremy.github.io/leeway/ · backend health at
-`https://leeway-api.hf.space/api/health` (Space name TBD once created).
+`https://leeway-api.onrender.com/api/health` (pending Render setup, see
+`backend/README.md`).
 
 ## Status
 
 **Stage 0 (infrastructure) — in progress.** Frontend renders a hardcoded
-LA → SF route on a real map; backend is a bare health-check endpoint. No
-real routing, range math, or feature logic yet — that's Stage 1.
+LA → SF route on a real map; backend is a bare health-check endpoint, coded
+and tested locally, pending its one-time Render dashboard setup. No real
+routing, range math, or feature logic yet — that's Stage 1.
 
 ## Structure
 
 - `frontend/` — React + Vite + TS, MapLibre GL, deployed to GitHub Pages.
-- `backend/` — FastAPI, deployed to a Hugging Face Space (Docker, free CPU).
-- `.github/workflows/` — CI: `pages.yml` builds+deploys the frontend on every
-  push to `frontend/**`; `deploy-space.yml` pushes `backend/` to the Space.
+- `backend/` — FastAPI, deployed to Render (Docker runtime, free web
+  service) — see `backend/README.md` for why it's not on Hugging Face Spaces.
+- `.github/workflows/pages.yml` — builds+deploys the frontend on every push
+  to `frontend/**`. Backend deploys via Render's own GitHub integration
+  instead of a custom workflow (`render.yaml` at the repo root).
 
 ## Local dev
 

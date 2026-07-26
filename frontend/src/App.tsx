@@ -12,7 +12,7 @@ const DUMMY_ROUTE: [number, number][] = [
   [-122.4194, 37.7599], // Mission District, SF
 ]
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://lyhjeremy-leeway-api.hf.space'
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
 
 function App() {
   const mapContainer = useRef<HTMLDivElement>(null)
