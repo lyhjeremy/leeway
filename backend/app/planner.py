@@ -21,6 +21,8 @@ had. So the approximation only ever picks candidates worth *trying*; it
 never decides feasibility on its own.
 """
 
+import httpx
+
 from . import providers, range_model
 from .geo import cumulative_distances_mi, nearest_route_distance_mi, point_at_distance
 
@@ -83,6 +85,21 @@ def _rank_candidates(route: dict, start_pct: float, full_range_mi: float,
     return candidates
 
 
+async def _safe_directions(origin, destination, avoid_tolls, avoid_highways):
+    """None on a real ORS 404 (genuinely no route between these two points
+    under the current constraints - confirmed via real testing: this
+    happens both for a single candidate charger and, less obviously, for
+    the main remaining-route call on a later leg, when avoid_highways
+    leaves no valid surface-street path from some intermediate stop to the
+    final destination). Every call site decides for itself what "no route
+    here" means for the plan; this helper only avoids duplicating the
+    try/except at each of them."""
+    try:
+        return await providers.directions(origin, destination, avoid_tolls, avoid_highways)
+    except httpx.HTTPStatusError:
+        return None
+
+
 async def plan_trip(
     origin: tuple[float, float],
     destination: tuple[float, float],
@@ -105,7 +122,17 @@ async def plan_trip(
     note = None
 
     for _ in range(MAX_STOPS + 1):
-        remaining = await providers.directions(current_start, destination, avoid_tolls, avoid_highways)
+        remaining = await _safe_directions(current_start, destination, avoid_tolls, avoid_highways)
+        if remaining is None:
+            note = (
+                "No route found from the current point to the destination under these constraints "
+                "(e.g. avoiding highways/tolls) - the plan is incomplete past this point."
+            )
+            final_arrival_pct = current_pct
+            final_leeway_mi = 0.0
+            feasible = False
+            break
+
         estimate = range_model.estimate_arrival(
             full_range_mi, current_pct, remaining["distance_mi"], remaining["highway_fraction"],
             remaining["ascent_ft"], remaining["descent_ft"], reserve_pct, reserve_mi,
@@ -132,7 +159,15 @@ async def plan_trip(
             ranked = _rank_candidates(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, stop_mode, stations)
 
             for candidate in ranked[:MAX_CANDIDATES_VERIFIED_PER_RADIUS]:
-                leg_to_stop = await providers.directions(current_start, (candidate["lat"], candidate["lon"]), avoid_tolls, avoid_highways)
+                leg_to_stop = await _safe_directions(current_start, (candidate["lat"], candidate["lon"]), avoid_tolls, avoid_highways)
+                if leg_to_stop is None:
+                    # A specific candidate can be genuinely unroutable under
+                    # the current constraints (e.g. only reachable via a
+                    # highway when avoid_highways is on) - ORS returns a real
+                    # 404 for that pair. One bad candidate shouldn't kill the
+                    # whole plan; just try the next one. Confirmed via a real
+                    # avoid_highways request that hit exactly this.
+                    continue
                 leg_estimate = range_model.estimate_arrival(
                     full_range_mi, current_pct, leg_to_stop["distance_mi"], leg_to_stop["highway_fraction"],
                     leg_to_stop["ascent_ft"], leg_to_stop["descent_ft"], reserve_pct, reserve_mi,

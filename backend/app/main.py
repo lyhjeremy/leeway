@@ -10,7 +10,7 @@ from .providers import OCMNotConfigured, ORSNotConfigured
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 app = FastAPI(title="Leeway API")
 
