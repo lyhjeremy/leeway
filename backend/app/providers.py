@@ -97,6 +97,7 @@ async def directions(origin: tuple[float, float], destination: tuple[float, floa
     summary = props["summary"]
     coords_3d = feature["geometry"]["coordinates"]
     coords = [(c[0], c[1]) for c in coords_3d]
+    elevations_m = [c[2] for c in coords_3d]
 
     ascent_m = props.get("ascent", 0.0)
     descent_m = props.get("descent", 0.0)
@@ -115,6 +116,7 @@ async def directions(origin: tuple[float, float], destination: tuple[float, floa
         "descent_ft": descent_m * FT_PER_METER,
         "highway_fraction": highway_fraction,
         "geometry": coords,
+        "elevations_m": elevations_m,
     }
 
 
@@ -136,7 +138,13 @@ async def find_charging_stations(lat: float, lon: float, radius_mi: float = 15, 
                 "distance": radius_mi,
                 "distanceunit": "Miles",
                 "maxresults": max_results,
-                "compact": "true",
+                # compact=true silently strips OperatorInfo AND the nested
+                # ConnectionType object on every connection - confirmed via a
+                # real side-by-side call, not assumed. Both are needed (network
+                # name, and real Supercharger detection), so this stays false
+                # even though the payload is bigger; traffic here is low-volume
+                # personal use, not worth optimizing away.
+                "compact": "false",
                 "verbose": "false",
             },
         )
@@ -147,13 +155,14 @@ async def find_charging_stations(lat: float, lon: float, radius_mi: float = 15, 
     for poi in data:
         addr = poi.get("AddressInfo") or {}
         conns = poi.get("Connections") or []
+        title = addr.get("Title", "Charging station") or "Charging station"
         operator = (poi.get("OperatorInfo") or {}).get("Title", "") or ""
         conn_titles = " ".join((c.get("ConnectionType") or {}).get("Title", "") or "" for c in conns)
-        is_supercharger = "tesla" in operator.lower() or "tesla" in conn_titles.lower()
+        is_supercharger = any("tesla" in s.lower() for s in (operator, conn_titles, title))
         max_kw = max((c.get("PowerKW") or 0) for c in conns) if conns else 0
         out.append({
             "id": poi.get("ID"),
-            "title": addr.get("Title", "Charging station"),
+            "title": title,
             "lat": addr.get("Latitude"),
             "lon": addr.get("Longitude"),
             "network": operator or "Unknown network",

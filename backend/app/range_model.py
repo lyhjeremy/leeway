@@ -23,6 +23,8 @@ of Stage 5, not something to fake precision on now.
 
 from dataclasses import dataclass
 
+from .geo import FT_PER_METER
+
 HIGHWAY_CONSUMPTION_PENALTY = 0.15  # +15% energy/mile on the highway fraction
 EQUIV_MI_PER_100FT_CLIMB = 0.7
 REGEN_RECOVERY_EFFICIENCY = 0.6  # fraction of climb-penalty recovered on descent
@@ -73,14 +75,88 @@ def distance_to_floor_mi(
     reserve_mi: float = 30.0,
 ) -> float:
     """Roughly how far the car can go before hitting the reserve floor,
-    ignoring elevation (elevation isn't uniform along a route, so this is
-    only used to pick a search *center* for candidate charging stations -
-    every actual feasibility number still goes through estimate_arrival
-    with real elevation for that specific leg)."""
+    ignoring elevation entirely. Kept only as a cheap fallback when no real
+    elevation profile is available - prefer distance_to_floor_mi_elevation_aware
+    whenever per-vertex elevation exists. A real test on this project found
+    exactly why the flat version is dangerous: a route with a front-loaded
+    climb (net elevation near zero over the whole trip) can exhaust the real
+    reserve well before this ignore-elevation estimate says it will, because
+    this formula spreads the trip's *net* elevation change evenly across the
+    whole distance instead of respecting where the climbing actually happens."""
     baseline_pct_per_mi = 100.0 / full_range_mi
     effective_pct_per_mi = baseline_pct_per_mi * (1 + HIGHWAY_CONSUMPTION_PENALTY * highway_fraction)
     floor = reserve_floor_pct(full_range_mi, reserve_pct, reserve_mi)
     return max(0.0, (start_pct - floor) / effective_pct_per_mi)
+
+
+def cumulative_pct_used(
+    cum_mi: list[float],
+    elevations_m: list[float],
+    full_range_mi: float,
+    highway_fraction: float,
+) -> list[float]:
+    """Per-vertex cumulative %-of-battery-used, walking real segment-level
+    distance and elevation change - not a net-elevation average. This is
+    what makes the Grapevine case work: the climb is real and immediate in
+    this list, not smeared evenly across the whole route the way
+    distance_to_floor_mi's ignore-elevation math would smear it.
+    Highway fraction is still applied uniformly per mile (ORS's waycategory
+    breakdown isn't reliable enough per-segment to do better - see
+    providers.py), same limitation as estimate_arrival."""
+    baseline_pct_per_mi = 100.0 / full_range_mi
+    effective_pct_per_mi = baseline_pct_per_mi * (1 + HIGHWAY_CONSUMPTION_PENALTY * highway_fraction)
+
+    pct_used = [0.0]
+    for i in range(1, len(cum_mi)):
+        seg_mi = cum_mi[i] - cum_mi[i - 1]
+        delta_ft = (elevations_m[i] - elevations_m[i - 1]) * FT_PER_METER
+        if delta_ft > 0:
+            seg_effective_mi = seg_mi + (delta_ft / 100.0) * EQUIV_MI_PER_100FT_CLIMB
+        else:
+            seg_effective_mi = seg_mi - (abs(delta_ft) / 100.0) * EQUIV_MI_PER_100FT_CLIMB * REGEN_RECOVERY_EFFICIENCY
+        pct_used.append(pct_used[-1] + seg_effective_mi * effective_pct_per_mi)
+    return pct_used
+
+
+def pct_used_at_distance(cum_mi: list[float], pct_used_curve: list[float], target_mi: float) -> float:
+    """Interpolate the cumulative_pct_used curve at an arbitrary distance -
+    used to score a charging candidate at its real position along the route
+    without recomputing the whole curve per candidate."""
+    if target_mi <= 0:
+        return 0.0
+    if target_mi >= cum_mi[-1]:
+        return pct_used_curve[-1]
+    for i in range(1, len(cum_mi)):
+        if cum_mi[i] >= target_mi:
+            seg_len = cum_mi[i] - cum_mi[i - 1]
+            frac = 0 if seg_len == 0 else (target_mi - cum_mi[i - 1]) / seg_len
+            return pct_used_curve[i - 1] + (pct_used_curve[i] - pct_used_curve[i - 1]) * frac
+    return pct_used_curve[-1]
+
+
+def distance_to_floor_mi_elevation_aware(
+    cum_mi: list[float],
+    elevations_m: list[float],
+    full_range_mi: float,
+    start_pct: float,
+    highway_fraction: float,
+    reserve_pct: float = 15.0,
+    reserve_mi: float = 30.0,
+) -> float:
+    """Where the reserve floor is actually hit along this specific route,
+    using real per-vertex elevation. Falls back to the flat estimate only if
+    the floor is never hit within the given geometry (i.e. the route as given
+    is already feasible - the caller shouldn't be calling this in that case,
+    but returning the route's full length rather than raising is the safer
+    failure mode)."""
+    target_pct_used = start_pct - reserve_floor_pct(full_range_mi, reserve_pct, reserve_mi)
+    pct_used = cumulative_pct_used(cum_mi, elevations_m, full_range_mi, highway_fraction)
+    for i in range(1, len(pct_used)):
+        if pct_used[i] >= target_pct_used:
+            seg_pct = pct_used[i] - pct_used[i - 1]
+            frac = 0 if seg_pct == 0 else (target_pct_used - pct_used[i - 1]) / seg_pct
+            return cum_mi[i - 1] + (cum_mi[i] - cum_mi[i - 1]) * frac
+    return cum_mi[-1]
 
 
 def estimate_arrival(
