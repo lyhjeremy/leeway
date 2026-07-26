@@ -264,15 +264,31 @@ function Planner() {
         )
       }
 
-      // One shared popup: hover previews it, tap/click pins it (mobile has
-      // no hover). While pinned it accepts pointer events so the maps link
-      // is clickable; as a hover preview it passes them through so it can't
-      // block other markers. Content is DOM-built - OCM titles must not be
-      // able to inject markup.
+      // One shared popup. Hover opens it; leaving the pin starts a short
+      // grace timer instead of closing instantly, and entering the bubble
+      // cancels the timer - without that, the maps link inside was
+      // unreachable (the bubble vanished the moment the cursor left the
+      // pin to travel toward it). Click pins it until the next map click.
+      // Content is DOM-built - OCM titles must not be able to inject markup.
       const popup = new maplibregl.Popup({ closeButton: false, offset: 16, maxWidth: '270px' })
       let pinned = false
+      let closeTimer: number | undefined
+      const scheduleClose = () => {
+        window.clearTimeout(closeTimer)
+        closeTimer = window.setTimeout(() => {
+          if (!pinned) popup.remove()
+        }, 300)
+      }
+      const holdOpen = () => window.clearTimeout(closeTimer)
       popup.on('close', () => {
         pinned = false
+      })
+      popup.on('open', () => {
+        const el = popup.getElement()
+        if (el) {
+          el.onmouseenter = holdOpen
+          el.onmouseleave = scheduleClose
+        }
       })
       const buildStopContent = (stop: ChargingStop) => {
         const box = document.createElement('div')
@@ -331,21 +347,21 @@ function Planner() {
         return box
       }
       const attachPopup = (el: HTMLElement, lon: number, lat: number, build: () => HTMLElement) => {
-        const show = (pin: boolean) => {
+        const show = () => {
           popup.setLngLat([lon, lat]).setDOMContent(build()).addTo(map)
-          if (pin) popup.addClassName('popup-pinned')
-          else popup.removeClassName('popup-pinned')
         }
         el.addEventListener('mouseenter', () => {
-          if (!pinned) show(false)
+          holdOpen()
+          if (!pinned) show()
         })
         el.addEventListener('mouseleave', () => {
-          if (!pinned) popup.remove()
+          if (!pinned) scheduleClose()
         })
         el.addEventListener('click', (e) => {
           e.stopPropagation()
           pinned = true
-          show(true)
+          holdOpen()
+          show()
         })
       }
 

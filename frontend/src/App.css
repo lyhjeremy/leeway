@@ -272,10 +272,14 @@
   margin-top: 1px;
 }
 
+/* No overflow:hidden here, ever: it visually clipped the destination
+   field's results dropdown (which hangs below the box) while the elements
+   stayed in the DOM - every automated check passed while humans saw no
+   dropdown at all. The rows are transparent, so corners stay clean
+   without clipping. */
 .field-group {
   border: 1px solid var(--hair);
   border-radius: 12px;
-  overflow: hidden;
   position: relative;
 }
 
@@ -343,8 +347,8 @@
   margin-top: 4px;
   list-style: none;
   padding: 4px;
-  z-index: 20;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  z-index: 40;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
   max-height: 220px;
   overflow-y: auto;
 }
@@ -1125,16 +1129,11 @@
   border-bottom: 1px solid var(--hair);
 }
 
-/* Marker popups - pure tooltips, nothing inside is clickable, so they must
-   never steal pointer events from markers underneath them (a pinned stop
-   popup was blocking the hazard triangle it overlapped). */
-.maplibregl-popup,
-.maplibregl-popup-content {
-  /* both needed: maplibre's own stylesheet re-enables pointer-events on
-     the content element, which is the one that was stealing clicks */
-  pointer-events: none;
-}
-
+/* Marker popups stay interactive - the maps link inside must be reachable
+   by traveling the cursor from the pin into the bubble. The
+   blocks-other-markers problem is handled by the close grace period in
+   App.tsx (an unhovered popup disappears in ~300ms), not by killing
+   pointer events. */
 .maplibregl-popup-content {
   font-family: 'Overpass', system-ui, sans-serif;
   background: var(--card);
@@ -1173,12 +1172,6 @@
   text-decoration: none;
 }
 
-/* Pinned (clicked) popups become interactive so the maps link works;
-   hover previews stay pass-through so they can't block other markers. */
-.maplibregl-popup.popup-pinned,
-.maplibregl-popup.popup-pinned .maplibregl-popup-content {
-  pointer-events: auto;
-}
 
 /* Map marker DOM elements (MapLibre custom markers) */
 .pin {
