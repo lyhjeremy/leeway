@@ -85,10 +85,17 @@ async def directions(
     destination: tuple[float, float],
     avoid_tolls: bool = False,
     avoid_highways: bool = False,
+    avoid_polygons: list[list[list[float]]] | None = None,
 ) -> dict:
     """origin/destination are (lat, lon). Returns distance_mi, duration_min,
     ascent_ft, descent_ft, highway_fraction, geometry as [(lon, lat), ...],
-    and elevations_m (parallel array, meters per vertex)."""
+    and elevations_m (parallel array, meters per vertex).
+
+    avoid_polygons is a list of GeoJSON-style polygon rings ([[lon,lat],...],
+    first point repeated last) that the route must not pass through - ORS's
+    only mechanism for steering around a specific intersection, since its
+    public API has no turn-type penalties. Used by the safety-avoidance
+    pass to route around flagged unprotected lefts and rail crossings."""
     _require_key()
     olat, olon = origin
     dlat, dlon = destination
@@ -103,8 +110,13 @@ async def directions(
         "elevation": True,
         "extra_info": ["waycategory"],
     }
+    options: dict = {}
     if avoid_features:
-        body["options"] = {"avoid_features": avoid_features}
+        options["avoid_features"] = avoid_features
+    if avoid_polygons:
+        options["avoid_polygons"] = {"type": "MultiPolygon", "coordinates": [[ring] for ring in avoid_polygons]}
+    if options:
+        body["options"] = options
 
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(

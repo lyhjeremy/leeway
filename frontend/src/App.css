@@ -374,6 +374,19 @@
   border-left: 1px solid var(--hair);
 }
 
+.seg-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.advanced {
+  border-left: 2px solid var(--hair);
+  padding-left: 12px;
+  margin-top: 4px;
+}
+
 .toggles {
   display: flex;
   flex-direction: column;

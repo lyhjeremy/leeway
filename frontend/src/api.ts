@@ -1,4 +1,4 @@
-import type { GeocodeResult, LatLon, PlanResponse, StopMode, VoiceSearchResponse } from './types'
+import type { ChargerFilter, GeocodeResult, LatLon, PlanResponse, SafetyMode, StopMode, VoiceSearchResponse } from './types'
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
 
@@ -23,6 +23,8 @@ export async function planTrip(params: {
   excludedStationIds?: number[]
   forcedStop?: LatLon | null
   forcedStopTitle?: string
+  safetyMode?: SafetyMode
+  chargerFilter?: ChargerFilter
 }): Promise<PlanResponse> {
   const res = await fetch(`${API_BASE}/api/plan`, {
     method: 'POST',
@@ -41,6 +43,8 @@ export async function planTrip(params: {
       excluded_station_ids: params.excludedStationIds ?? [],
       forced_stop: params.forcedStop ?? null,
       forced_stop_title: params.forcedStopTitle ?? 'Your chosen stop',
+      safety_mode: params.safetyMode ?? 'flag_only',
+      charger_filter: params.chargerFilter ?? 'all',
     }),
   })
   if (!res.ok) {

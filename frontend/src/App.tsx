@@ -9,7 +9,7 @@ import VoiceBar from './VoiceBar'
 import AccuracyPage from './AccuracyPage'
 import TripFeedback from './TripFeedback'
 import { planTrip } from './api'
-import type { ChargingStop, GeocodeResult, LatLon, PlanResponse, StopMode } from './types'
+import type { ChargerFilter, ChargingStop, GeocodeResult, LatLon, PlanResponse, SafetyMode, StopMode } from './types'
 import {
   clearPendingTrip,
   loadFullRangeMi,
@@ -30,6 +30,18 @@ const STOP_MODES: { value: StopMode; label: string }[] = [
   { value: 'fewest_stops', label: 'Fewest stops' },
   { value: 'fastest_trip', label: 'Fastest trip' },
   { value: 'best_amenities', label: 'Best amenities' },
+]
+
+const CHARGER_FILTERS: { value: ChargerFilter; label: string }[] = [
+  { value: 'all', label: 'All chargers' },
+  { value: 'tesla_only', label: 'Superchargers' },
+  { value: 'non_tesla', label: 'Non-Tesla' },
+]
+
+const SAFETY_MODES: { value: SafetyMode; label: string }[] = [
+  { value: 'flag_only', label: 'Flag only' },
+  { value: 'avoid_quick', label: '+3 min max' },
+  { value: 'avoid_hard', label: '+10 min max' },
 ]
 
 // First-visit demo trip - shown pre-filled so the value is visible before
@@ -70,8 +82,13 @@ function Planner() {
   const [batteryPct, setBatteryPct] = useState(68)
   const [fullRangeMi, setFullRangeMi] = useState<number>(() => loadFullRangeMi() ?? 205)
   const [stopMode, setStopMode] = useState<StopMode>('fewest_stops')
+  const [chargerFilter, setChargerFilter] = useState<ChargerFilter>('all')
+  const [safetyMode, setSafetyMode] = useState<SafetyMode>('flag_only')
   const [avoidTolls, setAvoidTolls] = useState(false)
   const [avoidHighways, setAvoidHighways] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [chargeToPct, setChargeToPct] = useState(80)
+  const [reservePct, setReservePct] = useState(15)
   const [plan, setPlan] = useState<PlanResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -252,8 +269,12 @@ function Planner() {
         batteryPct,
         fullRangeMi,
         stopMode,
+        chargeToPct,
+        reservePct,
         avoidTolls,
         avoidHighways,
+        safetyMode,
+        chargerFilter,
         excludedStationIds: overrides.excludedStationIds,
         forcedStop: overrides.forcedStop,
         forcedStopTitle: overrides.forcedStopTitle ?? forcedStopTitle,
@@ -419,6 +440,17 @@ function Planner() {
                 </button>
               ))}
             </div>
+            <div className="seg" style={{ marginTop: 8 }}>
+              {CHARGER_FILTERS.map((m) => (
+                <button
+                  key={m.value}
+                  className={m.value === chargerFilter ? 'on' : ''}
+                  onClick={() => setChargerFilter(m.value)}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
             {forcedStop ? (
               <div className="recents" style={{ marginTop: 8 }}>
                 Forced stop set on the map ·{' '}
@@ -435,6 +467,22 @@ function Planner() {
                 {pickingStop ? 'click the map to pick a stop…' : 'insist on a stop (click the map)'}
               </button>
             )}
+          </div>
+
+          <div>
+            <div className="row-label">Hazard detours</div>
+            <div className="seg">
+              {SAFETY_MODES.map((m) => (
+                <button key={m.value} className={m.value === safetyMode ? 'on' : ''} onClick={() => setSafetyMode(m.value)}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <div className="seg-hint">
+              {safetyMode === 'flag_only'
+                ? 'Unprotected lefts and rail crossings get flagged, route unchanged.'
+                : `Reroutes around them when the detour adds ${safetyMode === 'avoid_quick' ? '3' : '10'} minutes or less.`}
+            </div>
           </div>
 
           <div className="toggles">
@@ -456,6 +504,47 @@ function Planner() {
                 onChange={(e) => setAvoidHighways(e.target.checked)}
               />
             </label>
+          </div>
+
+          <div>
+            <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setShowAdvanced((v) => !v)}>
+              {showAdvanced ? 'advanced ▾' : 'advanced ▸'}
+            </button>
+            {showAdvanced && (
+              <div className="advanced">
+                <div className="row-label" style={{ marginTop: 10 }}>
+                  Charge to at each stop
+                </div>
+                <div className="battery-row">
+                  <span className="pct-value">{chargeToPct}%</span>
+                  <input
+                    type="range"
+                    min={50}
+                    max={100}
+                    value={chargeToPct}
+                    onChange={(e) => setChargeToPct(Number(e.target.value))}
+                  />
+                </div>
+                <div className="seg-hint">80% is the fast-charging sweet spot - above it, charging slows a lot.</div>
+
+                <div className="row-label" style={{ marginTop: 12 }}>
+                  Reserve floor
+                </div>
+                <div className="battery-row">
+                  <span className="pct-value">{reservePct}%</span>
+                  <input
+                    type="range"
+                    min={5}
+                    max={30}
+                    value={reservePct}
+                    onChange={(e) => setReservePct(Number(e.target.value))}
+                  />
+                </div>
+                <div className="seg-hint">
+                  No plan will ever count on dipping below this. Lower is braver, not smarter.
+                </div>
+              </div>
+            )}
           </div>
 
           <button className="plan-btn" onClick={handlePlan} disabled={loading}>

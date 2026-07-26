@@ -1,6 +1,8 @@
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from . import gemini, providers
@@ -12,7 +14,7 @@ from .voice import VoiceSearchError, find_stops
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 
 app = FastAPI(title="Leeway API")
 
@@ -72,6 +74,8 @@ class PlanRequest(BaseModel):
     excluded_station_ids: list[int] = []  # "skip this stop" - re-plan without these OCM station IDs
     forced_stop: LatLon | None = None  # "insist on this stop" - mandatory waypoint
     forced_stop_title: str = "Your chosen stop"
+    safety_mode: Literal["flag_only", "avoid_quick", "avoid_hard"] = "flag_only"
+    charger_filter: Literal["all", "tesla_only", "non_tesla"] = "all"
 
 
 @app.post("/api/plan")
@@ -91,6 +95,8 @@ async def plan(req: PlanRequest):
             excluded_station_ids=tuple(req.excluded_station_ids),
             forced_stop=(req.forced_stop.lat, req.forced_stop.lon) if req.forced_stop else None,
             forced_stop_title=req.forced_stop_title,
+            safety_mode=req.safety_mode,
+            charger_filter=req.charger_filter,
         )
     except ORSNotConfigured:
         raise HTTPException(503, "Routing isn't configured yet (ORS_API_KEY missing).")
