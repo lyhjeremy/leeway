@@ -1,0 +1,19 @@
+# Render's free tier spins the backend down after 15 idle minutes, and the
+# cold start (30-60s) made the app's first search/plan look broken - it's
+# the likely cause of a real "search doesn't work" report. A ping every 10
+# minutes keeps it warm. Always-on fits Render's free 750 instance-hours a
+# month (a month is ~720 hours).
+name: Keep backend warm
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          curl -sS --max-time 90 https://leeway-api.onrender.com/api/health
