@@ -13,7 +13,11 @@ interface Props {
 // one-shot planner into something that gets more honest about its own
 // accuracy over time.
 export default function TripFeedback({ pending, onLog, onDismiss }: Props) {
-  const [actualPct, setActualPct] = useState(pending.predictedArrivalPct)
+  // Kept as a string so a cleared field is "not answered yet" instead of
+  // silently becoming 0% - an empty input used to log "22 pts worse".
+  const [actualText, setActualText] = useState(String(pending.predictedArrivalPct))
+  const actualPct = Number(actualText)
+  const valid = actualText.trim() !== '' && Number.isFinite(actualPct) && actualPct >= 0 && actualPct <= 100
   const diff = actualPct - pending.predictedArrivalPct
 
   return (
@@ -34,8 +38,8 @@ export default function TripFeedback({ pending, onLog, onDismiss }: Props) {
               type="number"
               min={0}
               max={100}
-              value={actualPct}
-              onChange={(e) => setActualPct(Number(e.target.value))}
+              value={actualText}
+              onChange={(e) => setActualText(e.target.value)}
             />
             <span className="unit">%</span>
           </label>
@@ -43,13 +47,19 @@ export default function TripFeedback({ pending, onLog, onDismiss }: Props) {
 
         <div className="modal-result">
           <div className="modal-result-big">
-            {diff === 0 ? 'Spot on' : diff > 0 ? `${diff} pts better than predicted` : `${Math.abs(diff)} pts worse than predicted`}
+            {!valid
+              ? 'Enter the arrival %, 0-100'
+              : diff === 0
+                ? 'Spot on'
+                : diff > 0
+                  ? `${diff} pts better than predicted`
+                  : `${Math.abs(diff)} pts worse than predicted`}
           </div>
           <div className="modal-result-sub">Logged to your accuracy record - this device only, for now.</div>
         </div>
 
         <div className="modal-actions">
-          <button className="plan-btn" onClick={() => onLog(actualPct)}>
+          <button className="plan-btn" onClick={() => onLog(actualPct)} disabled={!valid}>
             Log it
           </button>
           <button className="modal-skip" onClick={onDismiss}>

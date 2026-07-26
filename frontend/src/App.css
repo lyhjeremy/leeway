@@ -14,10 +14,17 @@
 
 .app-root {
   height: 100vh;
+  height: 100dvh; /* mobile browsers: exclude the collapsing URL bar */
   display: flex;
   flex-direction: column;
   background: var(--page);
   color: var(--ink);
+}
+
+/* Keyboard access: every interactive element shows where focus is. */
+:focus-visible {
+  outline: 2px solid var(--sc-blue);
+  outline-offset: 2px;
 }
 
 .app-header {
@@ -86,6 +93,15 @@
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
+}
+
+/* Without this, any panel child with overflow:hidden (like .field-group,
+   which clips for its border-radius) computes min-height:0 and gets crushed
+   flat when the panel runs out of height - on a 320px phone the origin and
+   destination inputs collapsed to 2px. The panel scrolls; children never
+   shrink. */
+.panel > * {
+  flex-shrink: 0;
 }
 
 .map-wrap {
@@ -273,6 +289,13 @@
   background: var(--page);
 }
 
+.location-results li.location-empty {
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: default;
+  background: none;
+}
+
 .row-label {
   font-size: 12px;
   font-weight: 600;
@@ -321,23 +344,25 @@
   overflow: hidden;
 }
 
-.seg div {
+.seg button {
   flex: 1;
   text-align: center;
   font-size: 12.5px;
+  font-family: inherit;
+  border: none;
   padding: 9px 4px;
   color: var(--ink2);
   background: var(--card);
   cursor: pointer;
 }
 
-.seg div.on {
+.seg button.on {
   background: var(--ink);
   color: #fff;
   font-weight: 600;
 }
 
-.seg div + div {
+.seg button + button {
   border-left: 1px solid var(--hair);
 }
 
@@ -516,6 +541,8 @@
   border: 1px solid var(--hair);
   border-radius: 99px;
   padding: 3px 10px;
+  font-size: inherit;
+  font-family: inherit;
   color: var(--ink2);
   background: var(--card);
   margin-left: 4px;
@@ -838,11 +865,15 @@
     flex-direction: column;
   }
 
-  .map {
-    order: 1;
+  /* Sizing goes on .map-wrap (the actual flex child of .app-body) - the old
+     rules targeted .map, which is absolutely positioned inside it, so the
+     42vh height was really coming from an accidental 50/50 flex split.
+     min() keeps landscape phones usable: 240px of map on a 375px-tall
+     screen left a 79px sliver for every control. */
+  .map-wrap {
     flex: none;
     height: 42vh;
-    min-height: 240px;
+    min-height: min(240px, 45vh);
   }
 
   .panel {

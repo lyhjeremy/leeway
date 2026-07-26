@@ -1,7 +1,7 @@
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import gemini, providers
 from .gemini import GeminiNotConfigured
@@ -12,7 +12,7 @@ from .voice import VoiceSearchError, find_stops
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.7.0"
+VERSION = "0.7.1"
 
 app = FastAPI(title="Leeway API")
 
@@ -50,18 +50,22 @@ async def geocode(q: str = Query(min_length=2)):
 
 
 class LatLon(BaseModel):
-    lat: float
-    lon: float
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
 
 
+# Bounds found the hard way in a stress test: full_range_mi=0 crashed with a
+# ZeroDivisionError deep in the range math, a negative range produced a
+# "feasible" plan where the battery charged itself while driving, and
+# battery_pct=150 predicted arrival at 143%. Garbage gets a 422 here instead.
 class PlanRequest(BaseModel):
     origin: LatLon
     destination: LatLon
-    battery_pct: float
-    full_range_mi: float
-    reserve_pct: float = 15.0
-    reserve_mi: float = 30.0
-    charge_to_pct: float = 80.0
+    battery_pct: float = Field(gt=0, le=100)
+    full_range_mi: float = Field(ge=10, le=600)
+    reserve_pct: float = Field(default=15.0, ge=0, le=50)
+    reserve_mi: float = Field(default=30.0, ge=0, le=200)
+    charge_to_pct: float = Field(default=80.0, ge=30, le=100)
     stop_mode: str = "fewest_stops"  # fewest_stops | fastest_trip | best_amenities
     avoid_tolls: bool = False  # tolls allowed by default, per the product plan
     avoid_highways: bool = False

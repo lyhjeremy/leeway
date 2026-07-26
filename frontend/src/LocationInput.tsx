@@ -12,6 +12,7 @@ interface Props {
 export default function LocationInput({ placeholder, dotClass, value, onChange }: Props) {
   const [text, setText] = useState(value?.label ?? '')
   const [results, setResults] = useState<GeocodeResult[]>([])
+  const [searched, setSearched] = useState(false)
   const [open, setOpen] = useState(false)
   const debounceRef = useRef<number | undefined>(undefined)
 
@@ -23,17 +24,21 @@ export default function LocationInput({ placeholder, dotClass, value, onChange }
     setText(next)
     onChange(null)
     window.clearTimeout(debounceRef.current)
+    setSearched(false)
     if (next.trim().length < 3) {
       setResults([])
+      setOpen(false)
       return
     }
     debounceRef.current = window.setTimeout(async () => {
       try {
         const r = await geocode(next)
         setResults(r)
+        setSearched(true)
         setOpen(true)
       } catch {
         setResults([])
+        setOpen(false)
       }
     }, 350)
   }
@@ -54,13 +59,16 @@ export default function LocationInput({ placeholder, dotClass, value, onChange }
         onFocus={() => results.length > 0 && setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
-      {open && results.length > 0 && (
+      {open && (results.length > 0 || searched) && (
         <ul className="location-results">
           {results.map((r) => (
             <li key={`${r.lat},${r.lon}`} onMouseDown={() => pick(r)}>
               {r.label}
             </li>
           ))}
+          {results.length === 0 && searched && (
+            <li className="location-empty">No matches. Leeway covers California for now.</li>
+          )}
         </ul>
       )}
     </div>

@@ -45,7 +45,9 @@ export async function planTrip(params: {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.detail ?? `plan failed: ${res.status}`)
+    // FastAPI validation errors send detail as a list of objects, not a string
+    const detail = typeof body.detail === 'string' ? body.detail : null
+    throw new Error(detail ?? `plan failed: ${res.status}`)
   }
   return res.json()
 }

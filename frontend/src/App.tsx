@@ -46,7 +46,17 @@ function App() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
-  return route === '#accuracy' ? <AccuracyPage /> : <Planner />
+  // The planner stays mounted underneath the accuracy page - unmounting it
+  // threw away the whole planned trip every time someone glanced at the
+  // accuracy record and came back.
+  return (
+    <>
+      <div style={{ display: route === '#accuracy' ? 'none' : 'contents' }}>
+        <Planner />
+      </div>
+      {route === '#accuracy' && <AccuracyPage />}
+    </>
+  )
 }
 
 function Planner() {
@@ -82,6 +92,14 @@ function Planner() {
       style: 'https://tiles.openfreemap.org/styles/liberty',
       center: [-120.5, 36.2],
       zoom: 5.6,
+      // Collapses the attribution to an (i) button - the full line wrapped
+      // to two rows on a 320px screen and covered a third of the map.
+      attributionControl: { compact: true },
+    })
+    // MapLibre leaves the compact attribution expanded until first toggle;
+    // start it collapsed, the (i) button re-opens it.
+    map.once('load', () => {
+      map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
     })
     mapRef.current = map
     return () => map.remove()
@@ -176,6 +194,11 @@ function Planner() {
   async function runPlan(overrides: { excludedStationIds: number[]; forcedStop: LatLon | null; forcedStopTitle?: string }) {
     if (!origin || !destination) {
       setError('Pick both a start and a destination from the dropdown.')
+      return
+    }
+    // A cleared number input reads as 0, which the backend (rightly) refuses.
+    if (!Number.isFinite(fullRangeMi) || fullRangeMi < 50 || fullRangeMi > 600) {
+      setError("Enter your car's real 100% range first - somewhere between 50 and 600 miles.")
       return
     }
     setLoading(true)
@@ -306,9 +329,9 @@ function Planner() {
             <div className="recents">
               Recent:{' '}
               {recentTrips.map((t, i) => (
-                <span key={i} className="chip" onClick={() => pickRecentTrip(t)}>
+                <button key={i} className="chip" onClick={() => pickRecentTrip(t)}>
                   {t.origin.label.split(',')[0]} → {t.destination.label.split(',')[0]}
-                </span>
+                </button>
               ))}
             </div>
           )}
@@ -349,9 +372,9 @@ function Planner() {
             <div className="row-label">Charging stops</div>
             <div className="seg">
               {STOP_MODES.map((m) => (
-                <div key={m.value} className={m.value === stopMode ? 'on' : ''} onClick={() => setStopMode(m.value)}>
+                <button key={m.value} className={m.value === stopMode ? 'on' : ''} onClick={() => setStopMode(m.value)}>
                   {m.label}
-                </div>
+                </button>
               ))}
             </div>
             {forcedStop ? (
@@ -403,10 +426,16 @@ function Planner() {
             <>
               <div className={`verdict ${plan.feasible ? 'verdict-ok' : 'verdict-bad'}`}>
                 <div className="status">
-                  {plan.feasible ? '✓ Makeable with your reserve' : '⚠ Tight - check the plan below'}
+                  {plan.feasible
+                    ? '✓ Makeable with your reserve'
+                    : plan.arrival_pct < 0
+                      ? "⚠ Won't make it as planned - charge before you leave"
+                      : '⚠ Tight - check the plan below'}
                 </div>
                 <div className="big">
-                  Arrive at {plan.arrival_pct}%{' '}
+                  {plan.arrival_pct < 0
+                    ? `About ${Math.abs(Math.round(plan.leeway_mi))} mi short`
+                    : `Arrive at ${plan.arrival_pct}%`}{' '}
                   <small>{plan.leeway_mi >= 0 ? `· ${plan.leeway_mi} mi of leeway` : ''}</small>
                 </div>
                 <div className="sub">

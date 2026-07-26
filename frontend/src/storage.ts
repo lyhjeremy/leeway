@@ -1,16 +1,44 @@
 import type { GeocodeResult } from './types'
 
+// Chrome with cookies blocked (and some private-browsing modes) throws a
+// SecurityError on *any* localStorage access, including reads - without
+// these guards the whole app white-screens before first paint. Verified by
+// stress test, not hypothetical.
+function storageGet(store: 'local' | 'session', key: string): string | null {
+  try {
+    return (store === 'local' ? window.localStorage : window.sessionStorage).getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function storageSet(store: 'local' | 'session', key: string, value: string) {
+  try {
+    ;(store === 'local' ? window.localStorage : window.sessionStorage).setItem(key, value)
+  } catch {
+    // storage unavailable - the app still works, it just won't remember
+  }
+}
+
+function storageRemove(store: 'local' | 'session', key: string) {
+  try {
+    ;(store === 'local' ? window.localStorage : window.sessionStorage).removeItem(key)
+  } catch {
+    // ignore
+  }
+}
+
 const RANGE_KEY = 'leeway.fullRangeMi'
 const TRIPS_KEY = 'leeway.recentTrips'
 const MAX_RECENT = 5
 
 export function loadFullRangeMi(): number | null {
-  const raw = localStorage.getItem(RANGE_KEY)
+  const raw = storageGet('local', RANGE_KEY)
   return raw ? Number(raw) : null
 }
 
 export function saveFullRangeMi(mi: number) {
-  localStorage.setItem(RANGE_KEY, String(mi))
+  storageSet('local', RANGE_KEY, String(mi))
 }
 
 export interface RecentTrip {
@@ -20,7 +48,7 @@ export interface RecentTrip {
 
 export function loadRecentTrips(): RecentTrip[] {
   try {
-    return JSON.parse(localStorage.getItem(TRIPS_KEY) ?? '[]')
+    return JSON.parse(storageGet('local', TRIPS_KEY) ?? '[]')
   } catch {
     return []
   }
@@ -31,7 +59,7 @@ export function saveRecentTrip(trip: RecentTrip) {
     (t) => !(t.origin.label === trip.origin.label && t.destination.label === trip.destination.label),
   )
   const next = [trip, ...existing].slice(0, MAX_RECENT)
-  localStorage.setItem(TRIPS_KEY, JSON.stringify(next))
+  storageSet('local', TRIPS_KEY, JSON.stringify(next))
 }
 
 // Stage 5: trip logging. Everything here is local to this device - there's
@@ -55,16 +83,16 @@ export interface PendingTrip {
 export function savePendingTrip(trip: Omit<PendingTrip, 'id' | 'plannedAt'>) {
   const id = `${Date.now()}`
   const full: PendingTrip = { ...trip, id, plannedAt: Date.now() }
-  localStorage.setItem(PENDING_TRIP_KEY, JSON.stringify(full))
+  storageSet('local', PENDING_TRIP_KEY, JSON.stringify(full))
   // Marks this trip as "just planned in the current tab session" so the
   // "how did it go?" prompt doesn't fire immediately on the same visit -
   // it's meant to greet you on the *next* visit, per the product plan.
-  sessionStorage.setItem(JUST_PLANNED_SESSION_KEY, id)
+  storageSet('session', JUST_PLANNED_SESSION_KEY, id)
 }
 
 export function loadPendingTrip(): PendingTrip | null {
   try {
-    return JSON.parse(localStorage.getItem(PENDING_TRIP_KEY) ?? 'null')
+    return JSON.parse(storageGet('local', PENDING_TRIP_KEY) ?? 'null')
   } catch {
     return null
   }
@@ -73,12 +101,12 @@ export function loadPendingTrip(): PendingTrip | null {
 export function shouldPromptForPendingTrip(): PendingTrip | null {
   const pending = loadPendingTrip()
   if (!pending) return null
-  const justPlannedId = sessionStorage.getItem(JUST_PLANNED_SESSION_KEY)
+  const justPlannedId = storageGet('session', JUST_PLANNED_SESSION_KEY)
   return justPlannedId === pending.id ? null : pending
 }
 
 export function clearPendingTrip() {
-  localStorage.removeItem(PENDING_TRIP_KEY)
+  storageRemove('local', PENDING_TRIP_KEY)
 }
 
 export interface LoggedTrip {
@@ -91,7 +119,7 @@ export interface LoggedTrip {
 
 export function loadLoggedTrips(): LoggedTrip[] {
   try {
-    return JSON.parse(localStorage.getItem(LOGGED_TRIPS_KEY) ?? '[]')
+    return JSON.parse(storageGet('local', LOGGED_TRIPS_KEY) ?? '[]')
   } catch {
     return []
   }
@@ -106,7 +134,7 @@ export function logTripResult(pending: PendingTrip, actualArrivalPct: number) {
     actualArrivalPct,
   }
   const existing = loadLoggedTrips()
-  localStorage.setItem(LOGGED_TRIPS_KEY, JSON.stringify([next, ...existing]))
+  storageSet('local', LOGGED_TRIPS_KEY, JSON.stringify([next, ...existing]))
   clearPendingTrip()
 }
 
@@ -117,7 +145,7 @@ export interface RangeHistoryEntry {
 
 export function loadRangeHistory(): RangeHistoryEntry[] {
   try {
-    return JSON.parse(localStorage.getItem(RANGE_HISTORY_KEY) ?? '[]')
+    return JSON.parse(storageGet('local', RANGE_HISTORY_KEY) ?? '[]')
   } catch {
     return []
   }
@@ -125,5 +153,5 @@ export function loadRangeHistory(): RangeHistoryEntry[] {
 
 export function logRangeHistory(fullRangeMi: number) {
   const existing = loadRangeHistory()
-  localStorage.setItem(RANGE_HISTORY_KEY, JSON.stringify([...existing, { date: Date.now(), fullRangeMi }]))
+  storageSet('local', RANGE_HISTORY_KEY, JSON.stringify([...existing, { date: Date.now(), fullRangeMi }]))
 }
