@@ -418,6 +418,7 @@
 
 .link-btn {
   margin-left: auto;
+  flex: none;
   background: none;
   border: none;
   font-size: 12.5px;

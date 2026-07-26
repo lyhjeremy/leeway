@@ -6,7 +6,7 @@ import LocationInput from './LocationInput'
 import CarSetup from './CarSetup'
 import AccuracyPage from './AccuracyPage'
 import { planTrip } from './api'
-import type { GeocodeResult, PlanResponse, StopMode } from './types'
+import type { GeocodeResult, LatLon, PlanResponse, StopMode } from './types'
 import { loadFullRangeMi, loadRecentTrips, saveFullRangeMi, saveRecentTrip, type RecentTrip } from './storage'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
@@ -52,6 +52,9 @@ function Planner() {
   const [error, setError] = useState<string | null>(null)
   const [showCarSetup, setShowCarSetup] = useState(false)
   const [recentTrips, setRecentTrips] = useState<RecentTrip[]>(() => loadRecentTrips())
+  const [excludedStationIds, setExcludedStationIds] = useState<number[]>([])
+  const [forcedStop, setForcedStop] = useState<LatLon | null>(null)
+  const [pickingStop, setPickingStop] = useState(false)
 
   useEffect(() => {
     if (!mapContainer.current) return
@@ -64,6 +67,25 @@ function Planner() {
     mapRef.current = map
     return () => map.remove()
   }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    map.getCanvas().style.cursor = pickingStop ? 'crosshair' : ''
+    if (!pickingStop) return
+
+    const onClick = (e: maplibregl.MapMouseEvent) => {
+      const chosen = { lat: e.lngLat.lat, lon: e.lngLat.lng }
+      setForcedStop(chosen)
+      setPickingStop(false)
+      runPlan({ excludedStationIds, forcedStop: chosen })
+    }
+    map.on('click', onClick)
+    return () => {
+      map.off('click', onClick)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickingStop])
 
   useEffect(() => {
     fetch(`${API_BASE}/api/health`)
@@ -124,7 +146,7 @@ function Planner() {
     else map.once('load', drawRoute)
   }, [plan, origin, destination])
 
-  async function handlePlan() {
+  async function runPlan(overrides: { excludedStationIds: number[]; forcedStop: LatLon | null }) {
     if (!origin || !destination) {
       setError('Pick both a start and a destination from the dropdown.')
       return
@@ -140,6 +162,8 @@ function Planner() {
         stopMode,
         avoidTolls,
         avoidHighways,
+        excludedStationIds: overrides.excludedStationIds,
+        forcedStop: overrides.forcedStop,
       })
       setPlan(result)
       saveRecentTrip({ origin, destination })
@@ -150,6 +174,24 @@ function Planner() {
     } finally {
       setLoading(false)
     }
+  }
+
+  function handlePlan() {
+    setExcludedStationIds([])
+    setForcedStop(null)
+    runPlan({ excludedStationIds: [], forcedStop: null })
+  }
+
+  function handleSkipStop(id: number | null) {
+    if (id == null) return
+    const next = [...excludedStationIds, id]
+    setExcludedStationIds(next)
+    runPlan({ excludedStationIds: next, forcedStop })
+  }
+
+  function clearForcedStop() {
+    setForcedStop(null)
+    runPlan({ excludedStationIds, forcedStop: null })
   }
 
   function pickRecentTrip(trip: RecentTrip) {
@@ -232,6 +274,22 @@ function Planner() {
                 </div>
               ))}
             </div>
+            {forcedStop ? (
+              <div className="recents" style={{ marginTop: 8 }}>
+                Forced stop set on the map ·{' '}
+                <button className="link-btn" style={{ marginLeft: 0 }} onClick={clearForcedStop}>
+                  clear
+                </button>
+              </div>
+            ) : (
+              <button
+                className="link-btn"
+                style={{ marginTop: 8, marginLeft: 0 }}
+                onClick={() => setPickingStop((v) => !v)}
+              >
+                {pickingStop ? 'click the map to pick a stop…' : 'insist on a stop (click the map)'}
+              </button>
+            )}
           </div>
 
           <div className="toggles">
@@ -291,6 +349,11 @@ function Planner() {
                         {!s.reachable && ' · may not be reachable, verify before departure'}
                       </div>
                     </div>
+                    {s.id != null && (
+                      <button className="link-btn" onClick={() => handleSkipStop(s.id)} disabled={loading}>
+                        skip
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

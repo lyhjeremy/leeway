@@ -20,6 +20,9 @@ export async function planTrip(params: {
   stopMode?: StopMode
   avoidTolls?: boolean
   avoidHighways?: boolean
+  excludedStationIds?: number[]
+  forcedStop?: LatLon | null
+  forcedStopTitle?: string
 }): Promise<PlanResponse> {
   const res = await fetch(`${API_BASE}/api/plan`, {
     method: 'POST',
@@ -35,6 +38,9 @@ export async function planTrip(params: {
       stop_mode: params.stopMode ?? 'fewest_stops',
       avoid_tolls: params.avoidTolls ?? false,
       avoid_highways: params.avoidHighways ?? false,
+      excluded_station_ids: params.excludedStationIds ?? [],
+      forced_stop: params.forcedStop ?? null,
+      forced_stop_title: params.forcedStopTitle ?? 'Your chosen stop',
     }),
   })
   if (!res.ok) {

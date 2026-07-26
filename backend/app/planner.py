@@ -21,6 +21,8 @@ had. So the approximation only ever picks candidates worth *trying*; it
 never decides feasibility on its own.
 """
 
+import asyncio
+
 import httpx
 
 from . import providers, range_model
@@ -93,11 +95,22 @@ async def _safe_directions(origin, destination, avoid_tolls, avoid_highways):
     leaves no valid surface-street path from some intermediate stop to the
     final destination). Every call site decides for itself what "no route
     here" means for the plan; this helper only avoids duplicating the
-    try/except at each of them."""
-    try:
-        return await providers.directions(origin, destination, avoid_tolls, avoid_highways)
-    except httpx.HTTPStatusError:
-        return None
+    try/except at each of them.
+
+    A 429 (rate limited) is NOT the same situation as a 404 and is handled
+    separately here with one retry after a short backoff - a real forced-stop
+    test (two full nested plan_trip calls, each issuing many ORS requests)
+    hit ORS's per-minute rate limit and the 429 was being silently treated
+    as "no route exists," which is wrong: the route very likely exists, ORS
+    just needs a moment. Only degrades to None if the retry also fails."""
+    for attempt in range(2):
+        try:
+            return await providers.directions(origin, destination, avoid_tolls, avoid_highways)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429 and attempt == 0:
+                await asyncio.sleep(2)
+                continue
+            return None
 
 
 async def plan_trip(
@@ -111,7 +124,49 @@ async def plan_trip(
     stop_mode: str = "fewest_stops",
     avoid_tolls: bool = False,
     avoid_highways: bool = False,
+    excluded_station_ids: tuple = (),
+    forced_stop: tuple[float, float] | None = None,
+    forced_stop_title: str = "Your chosen stop",
 ) -> dict:
+    if forced_stop is not None:
+        # A forced stop is just a mandatory waypoint - split into two
+        # independently-planned sub-trips around it and splice the results.
+        # Reuses the exact same multi-stop logic (a forced stop that's itself
+        # far away can still need its own intermediate charging stops on the
+        # way to it), rather than a separate code path to maintain.
+        leg1 = await plan_trip(
+            origin, forced_stop, battery_pct, full_range_mi, reserve_pct, reserve_mi,
+            charge_to_pct, stop_mode, avoid_tolls, avoid_highways, excluded_station_ids,
+        )
+        leg2 = await plan_trip(
+            forced_stop, destination, charge_to_pct, full_range_mi, reserve_pct, reserve_mi,
+            charge_to_pct, stop_mode, avoid_tolls, avoid_highways, excluded_station_ids,
+        )
+        return {
+            "distance_mi": round(leg1["distance_mi"] + leg2["distance_mi"], 1),
+            "duration_min": round(leg1["duration_min"] + leg2["duration_min"]),
+            "geometry": leg1["geometry"] + leg2["geometry"],
+            "reserve_floor_pct": leg1["reserve_floor_pct"],
+            "feasible": leg1["feasible"] and leg2["feasible"],
+            "arrival_pct": leg2["arrival_pct"],
+            "leeway_mi": leg2["leeway_mi"],
+            "stops": leg1["stops"] + [{
+                "id": None,
+                "title": forced_stop_title,
+                "lat": forced_stop[0],
+                "lon": forced_stop[1],
+                "network": "Your choice",
+                "is_supercharger": False,
+                "max_kw": 0,
+                "arrive_pct": leg1["arrival_pct"],
+                "charge_to_pct": charge_to_pct,
+                "charge_time_min": None,  # unknown charger speed for a manually-forced stop
+                "reachable": leg1["feasible"],
+            }] + leg2["stops"],
+            "note": leg1["note"] or leg2["note"],
+            "weather": leg1["weather"],
+        }
+
     stops_out = []
     leg_geometries = []
     total_distance_mi = 0.0
@@ -157,6 +212,8 @@ async def plan_trip(
 
         for radius in SEARCH_RADII_MI:
             stations = await providers.find_charging_stations(search_lat, search_lon, radius_mi=radius)
+            if excluded_station_ids:
+                stations = [s for s in stations if s["id"] not in excluded_station_ids]
             if not stations:
                 continue
             ranked = _rank_candidates(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, stop_mode, stations, weather_adjustment)
@@ -207,6 +264,7 @@ async def plan_trip(
             total_duration_min += charge_time_min
 
         stops_out.append({
+            "id": chosen["id"],
             "title": chosen["title"],
             "lat": chosen["lat"],
             "lon": chosen["lon"],

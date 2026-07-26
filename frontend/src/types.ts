@@ -10,6 +10,7 @@ export interface GeocodeResult {
 }
 
 export interface ChargingStop {
+  id: number | null
   title: string
   lat: number
   lon: number
