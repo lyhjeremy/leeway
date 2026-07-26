@@ -86,6 +86,7 @@ async def directions(
     avoid_tolls: bool = False,
     avoid_highways: bool = False,
     avoid_polygons: list[list[list[float]]] | None = None,
+    via: tuple[float, float] | None = None,
 ) -> dict:
     """origin/destination are (lat, lon). Returns distance_mi, duration_min,
     ascent_ft, descent_ft, highway_fraction, geometry as [(lon, lat), ...],
@@ -105,11 +106,19 @@ async def directions(
     if avoid_highways:
         avoid_features.append("highways")
 
+    coordinates = [[olon, olat], [dlon, dlat]]
     body = {
-        "coordinates": [[olon, olat], [dlon, dlat]],
+        "coordinates": coordinates,
         "elevation": True,
         "extra_info": ["waycategory"],
     }
+    if via is not None:
+        coordinates.insert(1, [via[1], via[0]])
+        # A corridor-seeking via point is a rough geometric offset that can
+        # land miles from any road (mountains, fields) - let ORS snap it to
+        # the nearest road however far that is, instead of erroring at its
+        # default 350m limit.
+        body["radiuses"] = [-1, -1, -1]
     options: dict = {}
     if avoid_features:
         options["avoid_features"] = avoid_features
@@ -180,7 +189,9 @@ async def find_charging_stations(lat: float, lon: float, radius_mi: float = 15, 
                 # even though the payload is bigger; traffic here is low-volume
                 # personal use, not worth optimizing away.
                 "compact": "false",
-                "verbose": "false",
+                # verbose gives MediaItems (user photos), NumberOfPoints
+                # (stall count) and UsageCost - all shown in the stop popups.
+                "verbose": "true",
             },
         )
         resp.raise_for_status()
@@ -195,6 +206,9 @@ async def find_charging_stations(lat: float, lon: float, radius_mi: float = 15, 
         conn_titles = " ".join((c.get("ConnectionType") or {}).get("Title", "") or "" for c in conns)
         is_supercharger = any("tesla" in s.lower() for s in (operator, conn_titles, title))
         max_kw = max((c.get("PowerKW") or 0) for c in conns) if conns else 0
+        media = poi.get("MediaItems") or []
+        photo_url = next((m.get("ItemThumbnailURL") for m in media if m.get("ItemThumbnailURL")), None)
+        cost = (poi.get("UsageCost") or "").strip() or None
         out.append({
             "id": poi.get("ID"),
             "title": title,
@@ -204,6 +218,9 @@ async def find_charging_stations(lat: float, lon: float, radius_mi: float = 15, 
             "is_supercharger": is_supercharger,
             "max_kw": max_kw,
             "connector_count": len(conns),
+            "stall_count": poi.get("NumberOfPoints"),
+            "cost": cost,
+            "photo_url": photo_url,
         })
     return [s for s in out if s["lat"] is not None and s["lon"] is not None]
 
@@ -233,6 +250,60 @@ async def current_weather(lat: float, lon: float) -> dict:
         "wind_speed_mph": current["wind_speed_10m"],
         "wind_from_deg": current["wind_direction_10m"],
     }
+
+
+async def directions_alternatives(
+    origin: tuple[float, float],
+    destination: tuple[float, float],
+    avoid_tolls: bool = False,
+    avoid_highways: bool = False,
+) -> list[dict]:
+    """Up to 3 route corridors, baseline first, as {distance_mi,
+    duration_min, geometry, via}. `via` is the (lat, lon) waypoint that
+    reproduces the corridor when the full planner re-runs along it (null
+    for the baseline).
+
+    Both of ORS's built-in mechanisms hit hard public-API limits found via
+    real 2004 errors: the alternative-routes algorithm caps at 100km and
+    avoid-polygons at 150km, so neither can generate road-trip
+    alternatives. Instead: route through via points offset perpendicular
+    from the baseline's midpoint (left and right of the corridor) - for
+    LA->SF on I-5 that's what lands the 101 and 99 corridors. A via that
+    falls somewhere unroutable, or produces a barely-different or absurdly
+    longer route, is dropped - fewer than 3 corridors is an answer, not an
+    error."""
+    from .geo import bearing_deg, cumulative_distances_mi, destination_point, point_at_distance
+
+    baseline = await directions(origin, destination, avoid_tolls, avoid_highways)
+    total = baseline["distance_mi"]
+    out = [{**baseline, "via": None}]
+
+    cum = cumulative_distances_mi(baseline["geometry"])
+    mid_lon, mid_lat = point_at_distance(baseline["geometry"], cum, total / 2)
+    trip_bearing = bearing_deg(origin[0], origin[1], destination[0], destination[1])
+    offset_mi = min(60.0, max(12.0, total * 0.15))
+
+    for side_bearing in ((trip_bearing + 90) % 360, (trip_bearing - 90) % 360):
+        via = destination_point(mid_lat, mid_lon, side_bearing, offset_mi)
+        try:
+            alt = await directions(origin, destination, avoid_tolls, avoid_highways, via=via)
+        except httpx.HTTPError:
+            continue
+        too_long = alt["distance_mi"] > total * 1.5
+        too_similar = abs(alt["distance_mi"] - total) < total * 0.02
+        if too_long or too_similar:
+            continue
+        out.append({**alt, "via": {"lat": via[0], "lon": via[1]}})
+
+    return [
+        {
+            "distance_mi": round(r["distance_mi"], 1),
+            "duration_min": round(r["duration_min"]),
+            "geometry": r["geometry"],
+            "via": r["via"],
+        }
+        for r in out
+    ]
 
 
 async def overpass_raw(query: str) -> dict:

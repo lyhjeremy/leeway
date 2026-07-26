@@ -1,4 +1,4 @@
-import type { ChargerFilter, GeocodeResult, LatLon, PlanResponse, SafetyMode, StopMode, VoiceSearchResponse } from './types'
+import type { ChargerFilter, GeocodeResult, LatLon, PlanResponse, RouteAlt, SafetyMode, StopMode, Units, VoiceSearchResponse, Waypoint } from './types'
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
 
@@ -21,10 +21,14 @@ export async function planTrip(params: {
   avoidTolls?: boolean
   avoidHighways?: boolean
   excludedStationIds?: number[]
-  forcedStop?: LatLon | null
-  forcedStopTitle?: string
+  waypoints?: Waypoint[]
   safetyMode?: SafetyMode
   chargerFilter?: ChargerFilter
+  arrivalTargetPct?: number
+  passengers?: number
+  suitcases?: number
+  tempOverrideF?: number | null
+  units?: Units
 }): Promise<PlanResponse> {
   const res = await fetch(`${API_BASE}/api/plan`, {
     method: 'POST',
@@ -41,10 +45,14 @@ export async function planTrip(params: {
       avoid_tolls: params.avoidTolls ?? false,
       avoid_highways: params.avoidHighways ?? false,
       excluded_station_ids: params.excludedStationIds ?? [],
-      forced_stop: params.forcedStop ?? null,
-      forced_stop_title: params.forcedStopTitle ?? 'Your chosen stop',
+      waypoints: params.waypoints ?? [],
       safety_mode: params.safetyMode ?? 'flag_only',
       charger_filter: params.chargerFilter ?? 'all',
+      arrival_target_pct: params.arrivalTargetPct ?? 0,
+      passengers: params.passengers ?? 0,
+      suitcases: params.suitcases ?? 0,
+      temp_override_f: params.tempOverrideF ?? null,
+      units: params.units ?? 'mi',
     }),
   })
   if (!res.ok) {
@@ -54,6 +62,22 @@ export async function planTrip(params: {
     throw new Error(detail ?? `plan failed: ${res.status}`)
   }
   return res.json()
+}
+
+export async function fetchRoutes(
+  origin: LatLon,
+  destination: LatLon,
+  avoidTolls: boolean,
+  avoidHighways: boolean,
+): Promise<RouteAlt[]> {
+  const res = await fetch(`${API_BASE}/api/routes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ origin, destination, avoid_tolls: avoidTolls, avoid_highways: avoidHighways }),
+  })
+  if (!res.ok) throw new Error(`routes failed: ${res.status}`)
+  const data = await res.json()
+  return data.routes
 }
 
 export async function voiceSearch(query: string, origin: LatLon, destination: LatLon): Promise<VoiceSearchResponse> {

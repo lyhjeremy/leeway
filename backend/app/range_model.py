@@ -49,6 +49,24 @@ HOT_PENALTY_FRAC_PER_DEGF = 0.003
 WIND_PENALTY_FRAC_PER_MPH = 0.008
 WEATHER_ADJUSTMENT_CLAMP = (-0.25, 0.5)  # a very strong tailwind still can't imply free energy
 
+# Cargo/passenger load. Added mass raises rolling resistance roughly in
+# proportion, but aero drag (which dominates at highway speed) doesn't care
+# about weight - so the per-pound effect is real yet modest. ~0.8% more
+# consumption per 100 lb is in line with published EV loading tests; a full
+# car (4 extra people + 4 bags) comes out around 7%, which matches the
+# "fully loaded costs you a few percent" experience rather than a scare
+# number.
+PASSENGER_LB = 175.0
+SUITCASE_LB = 50.0
+LOAD_PENALTY_FRAC_PER_100LB = 0.008
+
+
+def load_adjustment_fraction(passengers: int, suitcases: int) -> float:
+    """Extra fractional consumption from people (beyond the driver) and
+    luggage. Combined additively with the weather adjustment."""
+    added_lb = passengers * PASSENGER_LB + suitcases * SUITCASE_LB
+    return LOAD_PENALTY_FRAC_PER_100LB * added_lb / 100.0
+
 
 def weather_adjustment_fraction(temp_f: float, headwind_mph: float) -> float:
     """Extra fractional consumption multiplier from temperature and wind,

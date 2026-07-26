@@ -7,14 +7,14 @@ from pydantic import BaseModel, Field
 
 from . import gemini, providers
 from .gemini import GeminiNotConfigured
-from .planner import plan_trip
+from .planner import localize_km, plan_trip
 from .providers import OCMNotConfigured, ORSNotConfigured
 from .voice import VoiceSearchError, find_stops
 
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.9.1"
+VERSION = "0.10.0"
 
 app = FastAPI(title="Leeway API")
 
@@ -56,6 +56,13 @@ class LatLon(BaseModel):
     lon: float = Field(ge=-180, le=180)
 
 
+class Waypoint(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    title: str = Field(default="Your stop", max_length=120)
+    hidden: bool = False  # a route-shaping via point, not a place you care to see listed
+
+
 # Bounds found the hard way in a stress test: full_range_mi=0 crashed with a
 # ZeroDivisionError deep in the range math, a negative range produced a
 # "feasible" plan where the battery charged itself while driving, and
@@ -72,10 +79,14 @@ class PlanRequest(BaseModel):
     avoid_tolls: bool = False  # tolls allowed by default, per the product plan
     avoid_highways: bool = False
     excluded_station_ids: list[int] = []  # "skip this stop" - re-plan without these OCM station IDs
-    forced_stop: LatLon | None = None  # "insist on this stop" - mandatory waypoint
-    forced_stop_title: str = "Your chosen stop"
+    waypoints: list[Waypoint] = Field(default=[], max_length=5)  # visited in order, battery passes through
     safety_mode: Literal["flag_only", "avoid_quick", "avoid_hard"] = "flag_only"
     charger_filter: Literal["all", "tesla_only", "non_tesla"] = "all"
+    arrival_target_pct: float = Field(default=0.0, ge=0, le=95)  # arrive with at least this much
+    passengers: int = Field(default=0, ge=0, le=6)  # beyond the driver
+    suitcases: int = Field(default=0, ge=0, le=10)
+    temp_override_f: float | None = Field(default=None, ge=-30, le=130)
+    units: Literal["mi", "km"] = "mi"  # numeric fields stay miles; narrative strings get localized
 
 
 @app.post("/api/plan")
@@ -92,8 +103,14 @@ async def plan(req: PlanRequest):
             f"{floor_pct:.0f}% (your {req.reserve_mi:.0f}-mile reserve is a big share of a "
             f"{req.full_range_mi:.0f}-mile range). Raise the charge-to level or lower the reserve.",
         )
+    if req.arrival_target_pct > req.charge_to_pct - 10:
+        raise HTTPException(
+            422,
+            f"An arrival target of {req.arrival_target_pct:.0f}% needs headroom below the "
+            f"{req.charge_to_pct:.0f}% charge-to level - lower the target or raise charge-to.",
+        )
     try:
-        return await plan_trip(
+        result = await plan_trip(
             origin=(req.origin.lat, req.origin.lon),
             destination=(req.destination.lat, req.destination.lon),
             battery_pct=req.battery_pct,
@@ -105,17 +122,47 @@ async def plan(req: PlanRequest):
             avoid_tolls=req.avoid_tolls,
             avoid_highways=req.avoid_highways,
             excluded_station_ids=tuple(req.excluded_station_ids),
-            forced_stop=(req.forced_stop.lat, req.forced_stop.lon) if req.forced_stop else None,
-            forced_stop_title=req.forced_stop_title,
+            waypoints=tuple(w.model_dump() for w in req.waypoints),
             safety_mode=req.safety_mode,
             charger_filter=req.charger_filter,
+            arrival_target_pct=req.arrival_target_pct,
+            passengers=req.passengers,
+            suitcases=req.suitcases,
+            temp_override_f=req.temp_override_f,
         )
+        return localize_km(result) if req.units == "km" else result
     except ORSNotConfigured:
         raise HTTPException(503, "Routing isn't configured yet (ORS_API_KEY missing).")
     except OCMNotConfigured:
         raise HTTPException(503, "Charging-station lookup isn't configured yet (OCM_API_KEY missing).")
     except httpx.HTTPError as e:
         raise HTTPException(502, f"Routing/charging provider error: {e}")
+
+
+class RoutesRequest(BaseModel):
+    origin: LatLon
+    destination: LatLon
+    avoid_tolls: bool = False
+    avoid_highways: bool = False
+
+
+@app.post("/api/routes")
+async def routes(req: RoutesRequest):
+    """Alternative route corridors for the picker - overview only, the real
+    plan re-runs along whichever one gets chosen."""
+    try:
+        return {
+            "routes": await providers.directions_alternatives(
+                (req.origin.lat, req.origin.lon),
+                (req.destination.lat, req.destination.lon),
+                req.avoid_tolls,
+                req.avoid_highways,
+            )
+        }
+    except ORSNotConfigured:
+        raise HTTPException(503, "Routing isn't configured yet (ORS_API_KEY missing).")
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Routing provider error: {e}")
 
 
 class VoiceSearchRequest(BaseModel):

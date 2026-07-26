@@ -22,6 +22,7 @@ never decides feasibility on its own.
 """
 
 import asyncio
+import re
 from datetime import datetime, timezone
 
 import httpx
@@ -194,52 +195,71 @@ async def plan_trip(
     avoid_tolls: bool = False,
     avoid_highways: bool = False,
     excluded_station_ids: tuple = (),
-    forced_stop: tuple[float, float] | None = None,
-    forced_stop_title: str = "Your chosen stop",
+    waypoints: tuple = (),  # dicts: {lat, lon, title, hidden} - visited in order, battery passes through
     safety_mode: str = "flag_only",  # flag_only | avoid_quick | avoid_hard
     charger_filter: str = "all",  # all | tesla_only | non_tesla
+    arrival_target_pct: float = 0.0,  # arrive at the final destination with at least this much
+    passengers: int = 0,  # beyond the driver
+    suitcases: int = 0,
+    temp_override_f: float | None = None,  # trust the driver's number over the midpoint forecast
 ) -> dict:
-    if forced_stop is not None:
-        # A forced stop is just a mandatory waypoint - split into two
-        # independently-planned sub-trips around it and splice the results.
-        # Reuses the exact same multi-stop logic (a forced stop that's itself
-        # far away can still need its own intermediate charging stops on the
-        # way to it), rather than a separate code path to maintain.
-        leg1 = await plan_trip(
-            origin, forced_stop, battery_pct, full_range_mi, reserve_pct, reserve_mi,
-            charge_to_pct, stop_mode, avoid_tolls, avoid_highways, excluded_station_ids,
-            safety_mode=safety_mode, charger_filter=charger_filter,
-        )
-        leg2 = await plan_trip(
-            forced_stop, destination, charge_to_pct, full_range_mi, reserve_pct, reserve_mi,
-            charge_to_pct, stop_mode, avoid_tolls, avoid_highways, excluded_station_ids,
-            safety_mode=safety_mode, charger_filter=charger_filter,
-        )
+    if waypoints:
+        # Each waypoint splits the trip into independently-planned sub-trips
+        # that get spliced back together, reusing all the multi-stop logic.
+        # The battery PASSES THROUGH a waypoint at whatever it arrived with -
+        # a Starbucks or an errand isn't a charger, and the old forced-stop
+        # behavior that silently assumed a full charge there was a lie.
+        points = [origin] + [(w["lat"], w["lon"]) for w in waypoints] + [destination]
+        subs = []
+        batt = battery_pct
+        for i in range(len(points) - 1):
+            is_last = i == len(points) - 2
+            sub = await plan_trip(
+                points[i], points[i + 1], batt, full_range_mi, reserve_pct, reserve_mi,
+                charge_to_pct, stop_mode, avoid_tolls, avoid_highways, excluded_station_ids,
+                safety_mode=safety_mode, charger_filter=charger_filter,
+                arrival_target_pct=arrival_target_pct if is_last else 0.0,
+                passengers=passengers, suitcases=suitcases, temp_override_f=temp_override_f,
+            )
+            subs.append(sub)
+            batt = max(sub["arrival_pct"], 1.0)  # a failed sub-trip still chains, feasible=False carries the truth
+
+        stops = list(subs[0]["stops"])
+        for i, w in enumerate(waypoints):
+            if not w.get("hidden"):
+                stops.append({
+                    "id": None,
+                    "title": w.get("title") or "Your stop",
+                    "lat": w["lat"],
+                    "lon": w["lon"],
+                    "network": "Stop by",
+                    "is_supercharger": False,
+                    "is_waypoint": True,
+                    "max_kw": 0,
+                    "arrive_pct": subs[i]["arrival_pct"],
+                    "charge_to_pct": subs[i]["arrival_pct"],  # passthrough, no charging assumed
+                    "charge_time_min": None,
+                    "reachable": subs[i]["feasible"],
+                    "stall_count": None,
+                    "cost": None,
+                    "photo_url": None,
+                })
+            stops.extend(subs[i + 1]["stops"])
+
+        notes = [s["note"] for s in subs if s["note"]]
         return {
-            "distance_mi": round(leg1["distance_mi"] + leg2["distance_mi"], 1),
-            "duration_min": round(leg1["duration_min"] + leg2["duration_min"]),
-            "geometry": leg1["geometry"] + leg2["geometry"],
-            "reserve_floor_pct": leg1["reserve_floor_pct"],
-            "feasible": leg1["feasible"] and leg2["feasible"],
-            "arrival_pct": leg2["arrival_pct"],
-            "leeway_mi": leg2["leeway_mi"],
-            "stops": leg1["stops"] + [{
-                "id": None,
-                "title": forced_stop_title,
-                "lat": forced_stop[0],
-                "lon": forced_stop[1],
-                "network": "Your choice",
-                "is_supercharger": False,
-                "max_kw": 0,
-                "arrive_pct": leg1["arrival_pct"],
-                "charge_to_pct": charge_to_pct,
-                "charge_time_min": None,  # unknown charger speed for a manually-forced stop
-                "reachable": leg1["feasible"],
-            }] + leg2["stops"],
-            "note": leg1["note"] or leg2["note"],
-            "rate_limited": leg1["rate_limited"] or leg2["rate_limited"],
-            "weather": leg1["weather"],
-            "safety_flags": leg1["safety_flags"] + leg2["safety_flags"],
+            "distance_mi": round(sum(s["distance_mi"] for s in subs), 1),
+            "duration_min": round(sum(s["duration_min"] for s in subs)),
+            "geometry": [pt for s in subs for pt in s["geometry"]],
+            "reserve_floor_pct": subs[0]["reserve_floor_pct"],
+            "feasible": all(s["feasible"] for s in subs),
+            "arrival_pct": subs[-1]["arrival_pct"],
+            "leeway_mi": subs[-1]["leeway_mi"],
+            "stops": stops,
+            "note": " ".join(dict.fromkeys(notes)) or None,
+            "rate_limited": any(s["rate_limited"] for s in subs),
+            "weather": subs[0]["weather"],
+            "safety_flags": [f for s in subs for f in s["safety_flags"]],
         }
 
     stops_out = []
@@ -252,8 +272,11 @@ async def plan_trip(
     total_distance_mi = 0.0
     total_duration_min = 0.0
 
-    weather = await _trip_weather(origin, destination)
-    weather_adjustment = weather["adjustment"] if weather else 0.0
+    weather = await _trip_weather(origin, destination, temp_override_f)
+    # One combined consumption adjustment: weather (live or overridden
+    # temperature, wind) plus passenger/luggage load. Threaded through every
+    # estimate under the historical name weather_adjustment.
+    weather_adjustment = (weather["adjustment"] if weather else 0.0) + range_model.load_adjustment_fraction(passengers, suitcases)
 
     current_start = origin
     current_pct = battery_pct
@@ -288,7 +311,7 @@ async def plan_trip(
             remaining["ascent_ft"], remaining["descent_ft"], reserve_pct, reserve_mi, weather_adjustment,
         )
 
-        if estimate.feasible:
+        if estimate.feasible and estimate.arrival_pct >= arrival_target_pct:
             leg_geometries.append(remaining["geometry"])
             leg_elevations.append(remaining["elevations_m"])
             leg_records.append({"start": current_start, "end": destination, "start_pct": current_pct, "route": remaining})
@@ -416,11 +439,15 @@ async def plan_trip(
             "lon": chosen["lon"],
             "network": chosen["network"],
             "is_supercharger": chosen["is_supercharger"],
+            "is_waypoint": False,
             "max_kw": chosen["max_kw"],
-            "arrive_pct": round(chosen_leg_estimate.arrival_pct, 1),
+            "arrive_pct": round(chosen_leg_estimate.arrival_pct),
             "charge_to_pct": charge_to_pct,
             "charge_time_min": round(charge_time_min) if charge_time_min else None,
             "reachable": True,  # real-verified above, not the approximation
+            "stall_count": chosen.get("stall_count"),
+            "cost": chosen.get("cost"),
+            "photo_url": chosen.get("photo_url"),
         })
 
         current_start = (chosen["lat"], chosen["lon"])
@@ -482,7 +509,7 @@ async def plan_trip(
                     charge_min = range_model.estimate_charge_time_min(
                         full_range_mi, arrive_pct, charge_to_pct, stop["max_kw"],
                     )
-                    stop["arrive_pct"] = round(arrive_pct, 1)
+                    stop["arrive_pct"] = round(arrive_pct)
                     stop["charge_time_min"] = round(charge_min) if charge_min else None
                     charge_total_min += charge_min or 0.0
                 total_duration_min = reroute["drive_min"] + charge_total_min
@@ -500,10 +527,12 @@ async def plan_trip(
         "distance_mi": round(total_distance_mi, 1),
         "duration_min": round(total_duration_min),  # driving + estimated charge time, see range_model.estimate_charge_time_min
         "geometry": geometry,
-        "reserve_floor_pct": round(range_model.reserve_floor_pct(full_range_mi, reserve_pct, reserve_mi), 1),
+        "reserve_floor_pct": round(range_model.reserve_floor_pct(full_range_mi, reserve_pct, reserve_mi)),
         "feasible": feasible,
-        "arrival_pct": round(final_arrival_pct, 1),
-        "leeway_mi": round(final_leeway_mi, 1),
+        # whole percentages and miles - decimal precision here implied an
+        # accuracy the range math doesn't actually have
+        "arrival_pct": round(final_arrival_pct),
+        "leeway_mi": round(final_leeway_mi),
         "stops": stops_out,
         "note": note,
         "rate_limited": rate_limited,  # true = retrying in a minute may fully fix this plan
@@ -514,6 +543,37 @@ async def plan_trip(
 
 def _append_note(note: str | None, extra: str) -> str:
     return f"{note} {extra}" if note else extra
+
+
+_KM_PATTERNS = [
+    (re.compile(r"(\d+(?:\.\d+)?)\s*miles\b"), lambda m: f"{round(float(m.group(1)) * 1.609)} km"),
+    (re.compile(r"(\d+(?:\.\d+)?)\s*mi\b"), lambda m: f"{round(float(m.group(1)) * 1.609)} km"),
+    (re.compile(r"\bmile\s+(\d+)"), lambda m: f"km {round(float(m.group(1)) * 1.609)}"),
+    (re.compile(r"(\d+(?:\.\d+)?)\s*°F"), lambda m: f"{round((float(m.group(1)) - 32) * 5 / 9)}°C"),
+    (re.compile(r"(\d+(?:\.\d+)?)\s*mph\b"), lambda m: f"{round(float(m.group(1)) * 1.609)} km/h"),
+]
+
+
+def localize_km(plan: dict) -> dict:
+    """Convert the units inside narrative strings (notes, flag descriptions,
+    weather summaries) to metric. Numeric fields stay in miles - the
+    frontend owns numeric display and converts them itself; this exists
+    because sentences like 'descent over 5.1 mi' are composed server-side
+    and a km driver shouldn't have to read them in miles. The templates are
+    all authored in this codebase, so the patterns are a closed set."""
+    def conv(text: str | None) -> str | None:
+        if not text:
+            return text
+        for pat, repl in _KM_PATTERNS:
+            text = pat.sub(repl, text)
+        return text
+
+    plan["note"] = conv(plan["note"])
+    for f in plan["safety_flags"]:
+        f["description"] = conv(f["description"])
+    if plan.get("weather"):
+        plan["weather"]["summary"] = conv(plan["weather"]["summary"])
+    return plan
 
 
 async def _point_hazard_flags(geometry: list[tuple[float, float]]) -> list[dict]:
@@ -658,25 +718,42 @@ def _search_centers(route: dict, start_pct: float, full_range_mi: float, reserve
     return out
 
 
-async def _trip_weather(origin: tuple[float, float], destination: tuple[float, float]) -> dict | None:
+async def _trip_weather(origin: tuple[float, float], destination: tuple[float, float],
+                         temp_override_f: float | None = None) -> dict | None:
     """One trip-day snapshot at the route's rough midpoint - not per-leg or
     per-segment (weather varies continuously anyway, so a single snapshot is
     already the honest precision level here). Weather is a nice-to-have
     honesty add-on, not core routing infra, so a fetch failure degrades to
-    "no adjustment" rather than failing the whole plan."""
+    "no adjustment" rather than failing the whole plan - unless the driver
+    supplied their own temperature, which still counts on its own.
+
+    temp_override_f replaces the forecast temperature (the driver's number
+    wins - they can see their car's thermometer) while wind stays live."""
     try:
         mid_lat = (origin[0] + destination[0]) / 2
         mid_lon = (origin[1] + destination[1]) / 2
         weather = await providers.current_weather(mid_lat, mid_lon)
     except httpx.HTTPError:
+        weather = None
+
+    if weather is None and temp_override_f is None:
         return None
 
-    bearing = bearing_deg(origin[0], origin[1], destination[0], destination[1])
-    headwind = headwind_component_mph(weather["wind_speed_mph"], weather["wind_from_deg"], bearing)
+    if weather is None:
+        temp_f, headwind, wind_speed = temp_override_f, 0.0, 0.0
+    else:
+        temp_f = temp_override_f if temp_override_f is not None else weather["temp_f"]
+        bearing = bearing_deg(origin[0], origin[1], destination[0], destination[1])
+        headwind = headwind_component_mph(weather["wind_speed_mph"], weather["wind_from_deg"], bearing)
+        wind_speed = weather["wind_speed_mph"]
+
+    summary = range_model.describe_weather(temp_f, headwind)
+    if temp_override_f is not None:
+        summary += " (your temperature)"
     return {
-        "adjustment": range_model.weather_adjustment_fraction(weather["temp_f"], headwind),
-        "summary": range_model.describe_weather(weather["temp_f"], headwind),
-        "temp_f": weather["temp_f"],
+        "adjustment": range_model.weather_adjustment_fraction(temp_f, headwind),
+        "summary": summary,
+        "temp_f": temp_f,
         "headwind_mph": round(headwind, 1),
-        "wind_speed_mph": weather["wind_speed_mph"],  # raw speed for the strong-wind safety flag
+        "wind_speed_mph": wind_speed,  # raw speed for the strong-wind safety flag
     }

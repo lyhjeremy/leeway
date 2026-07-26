@@ -1,10 +1,13 @@
-import type { GeocodeResult, PlanResponse } from './types'
+import type { GeocodeResult, PlanResponse, Units } from './types'
+
+const MI_TO_KM = 1.609344
 
 interface Props {
   plan: PlanResponse
   origin: GeocodeResult
   destination: GeocodeResult
   batteryPct: number
+  units: Units
   onClose: () => void
 }
 
@@ -12,7 +15,8 @@ interface Props {
 // point is that this survives the trip as a screenshot on your phone, even
 // though the car's own screen can't show the web app. No map, no controls,
 // just the numbers you need mid-drive.
-export default function TripCard({ plan, origin, destination, batteryPct, onClose }: Props) {
+export default function TripCard({ plan, origin, destination, batteryPct, units, onClose }: Props) {
+  const dist = (mi: number) => `${Math.round(units === 'km' ? mi * MI_TO_KM : mi)} ${units}`
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card trip-card" onClick={(e) => e.stopPropagation()}>
@@ -48,7 +52,7 @@ export default function TripCard({ plan, origin, destination, batteryPct, onClos
           <div>
             <div className="trip-card-title">Arrive at {plan.arrival_pct}%</div>
             <div className="trip-card-sub">
-              {plan.distance_mi} mi · {Math.round(plan.duration_min / 60)}h {plan.duration_min % 60}min total
+              {dist(plan.distance_mi)} · {Math.floor(plan.duration_min / 60)}h {plan.duration_min % 60}min total
             </div>
           </div>
         </div>

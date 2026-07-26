@@ -30,7 +30,16 @@ function storageRemove(store: 'local' | 'session', key: string) {
 
 const RANGE_KEY = 'leeway.fullRangeMi'
 const TRIPS_KEY = 'leeway.recentTrips'
+const UNITS_KEY = 'leeway.units'
 const MAX_RECENT = 5
+
+export function loadUnits(): 'mi' | 'km' {
+  return storageGet('local', UNITS_KEY) === 'km' ? 'km' : 'mi'
+}
+
+export function saveUnits(units: 'mi' | 'km') {
+  storageSet('local', UNITS_KEY, units)
+}
 
 export function loadFullRangeMi(): number | null {
   const raw = storageGet('local', RANGE_KEY)

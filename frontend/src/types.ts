@@ -16,12 +16,32 @@ export interface ChargingStop {
   lon: number
   network: string
   is_supercharger: boolean
+  is_waypoint?: boolean
   max_kw: number
   arrive_pct: number
   charge_to_pct: number
   charge_time_min: number | null
   reachable: boolean
+  stall_count?: number | null
+  cost?: string | null
+  photo_url?: string | null
 }
+
+export interface Waypoint {
+  lat: number
+  lon: number
+  title: string
+  hidden?: boolean
+}
+
+export interface RouteAlt {
+  distance_mi: number
+  duration_min: number
+  geometry: [number, number][]
+  via: { lat: number; lon: number } | null
+}
+
+export type Units = 'mi' | 'km'
 
 export type StopMode = 'fewest_stops' | 'fastest_trip' | 'best_amenities'
 export type SafetyMode = 'flag_only' | 'avoid_quick' | 'avoid_hard'

@@ -8,23 +8,37 @@ import TripCard from './TripCard'
 import VoiceBar from './VoiceBar'
 import AccuracyPage from './AccuracyPage'
 import TripFeedback from './TripFeedback'
-import { planTrip } from './api'
-import type { ChargerFilter, ChargingStop, GeocodeResult, LatLon, PlanResponse, SafetyMode, StopMode } from './types'
+import { fetchRoutes, planTrip } from './api'
+import type {
+  ChargerFilter,
+  ChargingStop,
+  GeocodeResult,
+  PlanResponse,
+  RouteAlt,
+  SafetyMode,
+  StopMode,
+  Units,
+  Waypoint,
+} from './types'
 import {
   clearPendingTrip,
   loadFullRangeMi,
   loadRecentTrips,
+  loadUnits,
   logRangeHistory,
   logTripResult,
   saveFullRangeMi,
   savePendingTrip,
   saveRecentTrip,
+  saveUnits,
   shouldPromptForPendingTrip,
   type PendingTrip,
   type RecentTrip,
 } from './storage'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
+
+export const MI_TO_KM = 1.609344
 
 const STOP_MODES: { value: StopMode; label: string }[] = [
   { value: 'fewest_stops', label: 'Fewest stops' },
@@ -77,6 +91,7 @@ function Planner() {
   const markersRef = useRef<maplibregl.Marker[]>([])
 
   const [apiStatus, setApiStatus] = useState<'checking' | 'ok' | 'down'>('checking')
+  const [units, setUnits] = useState<Units>(() => loadUnits())
   const [origin, setOrigin] = useState<GeocodeResult | null>(DEMO_ORIGIN)
   const [destination, setDestination] = useState<GeocodeResult | null>(DEMO_DESTINATION)
   const [batteryPct, setBatteryPct] = useState(68)
@@ -89,18 +104,35 @@ function Planner() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [chargeToPct, setChargeToPct] = useState(80)
   const [reservePct, setReservePct] = useState(15)
+  const [arrivalTargetPct, setArrivalTargetPct] = useState(0)
+  const [passengers, setPassengers] = useState(0)
+  const [suitcases, setSuitcases] = useState(0)
+  const [tempOverrideOn, setTempOverrideOn] = useState(false)
+  const [tempOverrideF, setTempOverrideF] = useState(70)
   const [plan, setPlan] = useState<PlanResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCarSetup, setShowCarSetup] = useState(false)
   const [recentTrips, setRecentTrips] = useState<RecentTrip[]>(() => loadRecentTrips())
   const [excludedStationIds, setExcludedStationIds] = useState<number[]>([])
-  const [forcedStop, setForcedStop] = useState<LatLon | null>(null)
-  const [forcedStopTitle, setForcedStopTitle] = useState('Your chosen stop')
+  const [waypoints, setWaypoints] = useState<Waypoint[]>([])
+  const [routeAlts, setRouteAlts] = useState<RouteAlt[] | null>(null)
+  const [chosenAlt, setChosenAlt] = useState(0)
   const [pickingStop, setPickingStop] = useState(false)
   const [shareMsg, setShareMsg] = useState<string | null>(null)
   const [showTripCard, setShowTripCard] = useState(false)
   const [pendingTrip, setPendingTrip] = useState<PendingTrip | null>(() => shouldPromptForPendingTrip())
+
+  // All numbers live in miles internally; only the display converts.
+  const dist = (mi: number) => `${Math.round(units === 'km' ? mi * MI_TO_KM : mi)} ${units}`
+  const tempDisplay = (f: number) => (units === 'km' ? Math.round(((f - 32) * 5) / 9) : Math.round(f))
+  const tempFromDisplay = (v: number) => (units === 'km' ? (v * 9) / 5 + 32 : v)
+
+  function toggleUnits() {
+    const next = units === 'mi' ? 'km' : 'mi'
+    setUnits(next)
+    saveUnits(next)
+  }
 
   useEffect(() => {
     if (!mapContainer.current) return
@@ -129,24 +161,66 @@ function Planner() {
     if (!pickingStop) return
 
     const onClick = (e: maplibregl.MapMouseEvent) => {
-      const chosen = { lat: e.lngLat.lat, lon: e.lngLat.lng }
-      setForcedStop(chosen)
-      setForcedStopTitle('Your chosen stop')
+      const next = [...waypoints, { lat: e.lngLat.lat, lon: e.lngLat.lng, title: `Map stop ${waypoints.length + 1}` }]
+      setWaypoints(next)
       setPickingStop(false)
-      runPlan({ excludedStationIds, forcedStop: chosen, forcedStopTitle: 'Your chosen stop' })
+      runPlan({ excludedStationIds, waypoints: next })
     }
     map.on('click', onClick)
     return () => {
       map.off('click', onClick)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickingStop])
+  }, [pickingStop, waypoints])
 
   useEffect(() => {
     fetch(`${API_BASE}/api/health`)
       .then((r) => (r.ok ? setApiStatus('ok') : setApiStatus('down')))
       .catch(() => setApiStatus('down'))
   }, [])
+
+  // A different trip means the old corridor comparison no longer applies.
+  useEffect(() => {
+    setRouteAlts(null)
+    setChosenAlt(0)
+    const map = mapRef.current
+    if (!map) return
+    for (const i of [1, 2]) {
+      if (map.getLayer(`alt-line-${i}`)) map.removeLayer(`alt-line-${i}`)
+      if (map.getSource(`alt-${i}`)) map.removeSource(`alt-${i}`)
+    }
+  }, [origin, destination])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !routeAlts) return
+    const draw = () => {
+      routeAlts.forEach((alt, i) => {
+        if (i === 0) return // the baseline is the planned route itself
+        const data = {
+          type: 'Feature' as const,
+          properties: {},
+          geometry: { type: 'LineString' as const, coordinates: alt.geometry },
+        }
+        const existing = map.getSource(`alt-${i}`) as maplibregl.GeoJSONSource | undefined
+        if (existing) existing.setData(data)
+        else {
+          map.addSource(`alt-${i}`, { type: 'geojson', data })
+          map.addLayer(
+            {
+              id: `alt-line-${i}`,
+              type: 'line',
+              source: `alt-${i}`,
+              paint: { 'line-color': '#8b9083', 'line-width': 3, 'line-dasharray': [2, 2] },
+            },
+            'route-line',
+          )
+        }
+      })
+    }
+    if (map.isStyleLoaded()) draw()
+    else map.once('load', draw)
+  }, [routeAlts])
 
   useEffect(() => {
     const map = mapRef.current
@@ -184,51 +258,107 @@ function Planner() {
           new maplibregl.Marker({ color: '#0b0b0b' }).setLngLat([destination.lon, destination.lat]).addTo(map),
         )
       }
+
       // One shared popup: hover previews it, tap/click pins it (mobile has
-      // no hover), clicking the map closes it. Content is built with DOM
-      // nodes, not an HTML string - station titles come from OCM and
-      // shouldn't be able to inject markup.
-      const popup = new maplibregl.Popup({ closeButton: false, offset: 16, maxWidth: '260px' })
-      const attachPopup = (el: HTMLElement, lon: number, lat: number, lines: [string, ...string[]]) => {
-        const show = () => {
-          const box = document.createElement('div')
-          const title = document.createElement('div')
-          title.className = 'pop-title'
-          title.textContent = lines[0]
-          box.appendChild(title)
-          for (const line of lines.slice(1)) {
-            const sub = document.createElement('div')
-            sub.className = 'pop-sub'
-            sub.textContent = line
-            box.appendChild(sub)
-          }
-          popup.setLngLat([lon, lat]).setDOMContent(box).addTo(map)
+      // no hover). While pinned it accepts pointer events so the maps link
+      // is clickable; as a hover preview it passes them through so it can't
+      // block other markers. Content is DOM-built - OCM titles must not be
+      // able to inject markup.
+      const popup = new maplibregl.Popup({ closeButton: false, offset: 16, maxWidth: '270px' })
+      let pinned = false
+      popup.on('close', () => {
+        pinned = false
+      })
+      const buildStopContent = (stop: ChargingStop) => {
+        const box = document.createElement('div')
+        const title = document.createElement('div')
+        title.className = 'pop-title'
+        title.textContent = stop.title
+        box.appendChild(title)
+        const facts = document.createElement('div')
+        facts.className = 'pop-sub'
+        const bits = [stop.network]
+        if (stop.max_kw) bits.push(`up to ${Math.round(stop.max_kw)} kW`)
+        if (stop.stall_count) bits.push(`${stop.stall_count} stall${stop.stall_count === 1 ? '' : 's'}`)
+        facts.textContent = bits.join(' · ')
+        box.appendChild(facts)
+        const line = document.createElement('div')
+        line.className = 'pop-sub'
+        line.textContent = stop.is_waypoint
+          ? `Pass through with ${stop.arrive_pct}%`
+          : `Arrive ${stop.arrive_pct}% → charge to ${stop.charge_to_pct}%${
+              stop.charge_time_min ? ` (~${stop.charge_time_min} min)` : ''
+            }`
+        box.appendChild(line)
+        if (stop.cost) {
+          const cost = document.createElement('div')
+          cost.className = 'pop-sub'
+          cost.textContent = stop.cost
+          box.appendChild(cost)
         }
-        el.addEventListener('mouseenter', show)
-        el.addEventListener('mouseleave', () => popup.remove())
+        if (stop.photo_url) {
+          const img = document.createElement('img')
+          img.className = 'pop-img'
+          img.src = stop.photo_url
+          img.alt = stop.title
+          img.loading = 'lazy'
+          box.appendChild(img)
+        }
+        const link = document.createElement('a')
+        link.className = 'pop-link'
+        link.href = `https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lon}`
+        link.target = '_blank'
+        link.rel = 'noopener'
+        link.textContent = 'Open in Google Maps →'
+        box.appendChild(link)
+        return box
+      }
+      const buildFlagContent = (description: string) => {
+        const box = document.createElement('div')
+        const title = document.createElement('div')
+        title.className = 'pop-title'
+        title.textContent = 'Heads up'
+        box.appendChild(title)
+        const sub = document.createElement('div')
+        sub.className = 'pop-sub'
+        sub.textContent = description
+        box.appendChild(sub)
+        return box
+      }
+      const attachPopup = (el: HTMLElement, lon: number, lat: number, build: () => HTMLElement) => {
+        const show = (pin: boolean) => {
+          popup.setLngLat([lon, lat]).setDOMContent(build()).addTo(map)
+          if (pin) popup.addClassName('popup-pinned')
+          else popup.removeClassName('popup-pinned')
+        }
+        el.addEventListener('mouseenter', () => {
+          if (!pinned) show(false)
+        })
+        el.addEventListener('mouseleave', () => {
+          if (!pinned) popup.remove()
+        })
         el.addEventListener('click', (e) => {
           e.stopPropagation()
-          show()
+          pinned = true
+          show(true)
         })
       }
 
       for (const stop of plan.stops) {
         const el = document.createElement('div')
-        el.className = stop.is_supercharger ? 'pin pin-supercharger' : 'pin pin-ccs'
-        attachPopup(el, stop.lon, stop.lat, [
-          stop.title,
-          `${stop.network}${stop.max_kw ? ` · up to ${Math.round(stop.max_kw)} kW` : ''}`,
-          `Arrive ${stop.arrive_pct}% → charge to ${stop.charge_to_pct}%${
-            stop.charge_time_min ? ` (~${stop.charge_time_min} min)` : ''
-          }`,
-        ])
+        el.className = stop.is_waypoint
+          ? 'pin pin-waypoint'
+          : stop.is_supercharger
+            ? 'pin pin-supercharger'
+            : 'pin pin-ccs'
+        attachPopup(el, stop.lon, stop.lat, () => buildStopContent(stop))
         markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([stop.lon, stop.lat]).addTo(map))
       }
       for (const flag of plan.safety_flags) {
         if (flag.lat == null || flag.lon == null) continue
         const el = document.createElement('div')
         el.className = 'pin-hazard'
-        attachPopup(el, flag.lon, flag.lat, ['Heads up', flag.description])
+        attachPopup(el, flag.lon, flag.lat, () => buildFlagContent(flag.description))
         // anchor bottom: the triangle's tip touches the flagged spot and its
         // body sits above it, so it can't cover (and steal clicks from) a
         // charging-stop pin at the same location - which really happens: the
@@ -250,14 +380,22 @@ function Planner() {
     else map.once('load', drawRoute)
   }, [plan, origin, destination])
 
-  async function runPlan(overrides: { excludedStationIds: number[]; forcedStop: LatLon | null; forcedStopTitle?: string }) {
+  async function runPlan(overrides: {
+    excludedStationIds: number[]
+    waypoints: Waypoint[]
+    via?: { lat: number; lon: number } | null
+  }) {
     if (!origin || !destination) {
       setError('Pick both a start and a destination from the dropdown.')
       return
     }
     // A cleared number input reads as 0, which the backend (rightly) refuses.
     if (!Number.isFinite(fullRangeMi) || fullRangeMi < 50 || fullRangeMi > 600) {
-      setError("Enter your car's real 100% range first (between 50 and 600 miles).")
+      setError(
+        units === 'km'
+          ? "Enter your car's real 100% range first (between 80 and 965 km)."
+          : "Enter your car's real 100% range first (between 50 and 600 miles).",
+      )
       return
     }
     // The floor is max(reserve %, 30-mile reserve as a %) - on a small range
@@ -271,9 +409,17 @@ function Planner() {
       )
       return
     }
+    if (arrivalTargetPct > 0 && arrivalTargetPct > chargeToPct - 10) {
+      setError(`An arrival target of ${arrivalTargetPct}% needs headroom below the ${chargeToPct}% charge-to level.`)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
+      const allWaypoints = [...overrides.waypoints]
+      if (overrides.via) {
+        allWaypoints.push({ ...overrides.via, title: 'via', hidden: true })
+      }
       const result = await planTrip({
         origin: { lat: origin.lat, lon: origin.lon },
         destination: { lat: destination.lat, lon: destination.lon },
@@ -286,9 +432,13 @@ function Planner() {
         avoidHighways,
         safetyMode,
         chargerFilter,
+        arrivalTargetPct,
+        passengers,
+        suitcases,
+        tempOverrideF: tempOverrideOn ? tempOverrideF : null,
+        units,
         excludedStationIds: overrides.excludedStationIds,
-        forcedStop: overrides.forcedStop,
-        forcedStopTitle: overrides.forcedStopTitle ?? forcedStopTitle,
+        waypoints: allWaypoints,
       })
       setPlan(result)
       saveRecentTrip({ origin, destination })
@@ -309,30 +459,57 @@ function Planner() {
 
   function handlePlan() {
     setExcludedStationIds([])
-    setForcedStop(null)
-    runPlan({ excludedStationIds: [], forcedStop: null })
+    runPlan({ excludedStationIds: [], waypoints, via: currentVia() })
+  }
+
+  function currentVia() {
+    return routeAlts && chosenAlt > 0 ? routeAlts[chosenAlt].via : null
   }
 
   function handleSkipStop(id: number | null) {
     if (id == null) return
     const next = [...excludedStationIds, id]
     setExcludedStationIds(next)
-    runPlan({ excludedStationIds: next, forcedStop })
+    runPlan({ excludedStationIds: next, waypoints, via: currentVia() })
   }
 
-  function clearForcedStop() {
-    setForcedStop(null)
-    runPlan({ excludedStationIds, forcedStop: null })
+  function removeWaypoint(index: number) {
+    const next = waypoints.filter((_, i) => i !== index)
+    setWaypoints(next)
+    runPlan({ excludedStationIds, waypoints: next, via: currentVia() })
   }
 
   function handleAddVoiceStop(lat: number, lon: number, title: string) {
-    // A voice-found stop is just another forced waypoint - reuses the exact
-    // same mandatory-stop mechanism as "insist on a stop (click the map)",
-    // not a new insertion path.
-    const chosen = { lat, lon }
-    setForcedStop(chosen)
-    setForcedStopTitle(title)
-    runPlan({ excludedStationIds, forcedStop: chosen, forcedStopTitle: title })
+    // A voice-found stop is just another waypoint - same mechanism as
+    // clicking the map, not a separate insertion path.
+    const next = [...waypoints, { lat, lon, title }]
+    setWaypoints(next)
+    runPlan({ excludedStationIds, waypoints: next, via: currentVia() })
+  }
+
+  async function handleCompareRoutes() {
+    if (!origin || !destination) return
+    try {
+      const alts = await fetchRoutes(
+        { lat: origin.lat, lon: origin.lon },
+        { lat: destination.lat, lon: destination.lon },
+        avoidTolls,
+        avoidHighways,
+      )
+      setRouteAlts(alts)
+      setChosenAlt(0)
+      if (alts.length === 1) setShareMsg('No genuinely different corridor exists for this trip')
+      setTimeout(() => setShareMsg(null), 3000)
+    } catch {
+      setShareMsg('Could not fetch other corridors right now')
+      setTimeout(() => setShareMsg(null), 2500)
+    }
+  }
+
+  function handleChooseAlt(i: number) {
+    setChosenAlt(i)
+    const via = routeAlts && i > 0 ? routeAlts[i].via : null
+    runPlan({ excludedStationIds, waypoints, via })
   }
 
   async function handleShareStop(stop: ChargingStop) {
@@ -362,6 +539,7 @@ function Planner() {
   function pickRecentTrip(trip: RecentTrip) {
     setOrigin(trip.origin)
     setDestination(trip.destination)
+    setWaypoints([])
   }
 
   function handleCarSetupSave(rangeMi: number) {
@@ -382,18 +560,23 @@ function Planner() {
     setPendingTrip(null)
   }
 
+  const rangeDisplay = Math.round(units === 'km' ? fullRangeMi * MI_TO_KM : fullRangeMi)
+
   return (
     <div className="app-root">
       <header className="app-header">
         <span className="logo-dot" />
         <span className="logo-word">Leeway</span>
         <span className="tag">the second opinion before you leave</span>
+        <button className="unit-toggle" onClick={toggleUnits} title="Switch units">
+          {units === 'mi' ? 'mi · °F' : 'km · °C'}
+        </button>
         <span className={`api-chip api-chip--${apiStatus}`}>
           backend: {apiStatus === 'checking' ? 'checking…' : apiStatus === 'ok' ? 'connected' : 'unreachable'}
         </span>
       </header>
       <div className="app-body">
-        <aside className="panel">
+        <aside className="panel panel-left">
           <div className="field-group">
             <LocationInput placeholder="Start" dotClass="dot-a" value={origin} onChange={setOrigin} />
             <LocationInput placeholder="Destination" dotClass="dot-b" value={destination} onChange={setDestination} />
@@ -430,12 +613,15 @@ function Planner() {
               <input
                 className="range-input"
                 type="number"
-                min={50}
-                max={400}
-                value={fullRangeMi}
-                onChange={(e) => setFullRangeMi(Number(e.target.value))}
+                min={units === 'km' ? 80 : 50}
+                max={units === 'km' ? 965 : 600}
+                value={rangeDisplay}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setFullRangeMi(units === 'km' ? v / MI_TO_KM : v)
+                }}
               />
-              <span className="range-unit">mi</span>
+              <span className="range-unit">{units}</span>
               <button className="link-btn" onClick={() => setShowCarSetup(true)}>
                 find my real range
               </button>
@@ -462,20 +648,22 @@ function Planner() {
                 </button>
               ))}
             </div>
-            {forcedStop ? (
-              <div className="recents" style={{ marginTop: 8 }}>
-                Forced stop set on the map ·{' '}
-                <button className="link-btn" style={{ marginLeft: 0 }} onClick={clearForcedStop}>
-                  clear
-                </button>
+          </div>
+
+          <div>
+            <div className="row-label">Your stops along the way</div>
+            {waypoints.length > 0 && (
+              <div className="recents" style={{ marginTop: 0, marginBottom: 6 }}>
+                {waypoints.map((w, i) => (
+                  <button key={i} className="chip" onClick={() => removeWaypoint(i)} title="Remove this stop">
+                    {w.title} ✕
+                  </button>
+                ))}
               </div>
-            ) : (
-              <button
-                className="link-btn"
-                style={{ marginTop: 8, marginLeft: 0 }}
-                onClick={() => setPickingStop((v) => !v)}
-              >
-                {pickingStop ? 'click the map to pick a stop…' : 'insist on a stop (click the map)'}
+            )}
+            {waypoints.length < 5 && (
+              <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setPickingStop((v) => !v)}>
+                {pickingStop ? 'click the map to add it…' : '+ add a stop (click the map)'}
               </button>
             )}
           </div>
@@ -554,6 +742,73 @@ function Planner() {
                 <div className="seg-hint">
                   No plan will ever count on dipping below this. Lower is braver, not smarter.
                 </div>
+
+                <div className="row-label" style={{ marginTop: 12 }}>
+                  Arrive with at least
+                </div>
+                <div className="battery-row">
+                  <span className="pct-value">{arrivalTargetPct === 0 ? 'off' : `${arrivalTargetPct}%`}</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={70}
+                    step={5}
+                    value={arrivalTargetPct}
+                    onChange={(e) => setArrivalTargetPct(Number(e.target.value))}
+                  />
+                </div>
+                <div className="seg-hint">Adds a charging stop near the end if needed - useful when there's no charging at your destination.</div>
+
+                <div className="row-label" style={{ marginTop: 12 }}>
+                  Load
+                </div>
+                <div className="load-row">
+                  <label>
+                    <span>passengers</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={6}
+                      value={passengers}
+                      onChange={(e) => setPassengers(Math.max(0, Math.min(6, Math.round(Number(e.target.value) || 0))))}
+                    />
+                  </label>
+                  <label>
+                    <span>suitcases</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={10}
+                      value={suitcases}
+                      onChange={(e) => setSuitcases(Math.max(0, Math.min(10, Math.round(Number(e.target.value) || 0))))}
+                    />
+                  </label>
+                </div>
+                <div className="seg-hint">Beyond the driver. A full car costs a few percent of range, not a scare number.</div>
+
+                <label className="tog" style={{ marginTop: 12 }}>
+                  <span>Set temperature myself</span>
+                  <input
+                    type="checkbox"
+                    className="switch"
+                    checked={tempOverrideOn}
+                    onChange={(e) => setTempOverrideOn(e.target.checked)}
+                  />
+                </label>
+                {tempOverrideOn && (
+                  <div className="battery-row" style={{ marginTop: 8 }}>
+                    <input
+                      className="range-input"
+                      type="number"
+                      value={tempDisplay(tempOverrideF)}
+                      onChange={(e) => setTempOverrideF(tempFromDisplay(Number(e.target.value)))}
+                    />
+                    <span className="range-unit">{units === 'km' ? '°C' : '°F'}</span>
+                  </div>
+                )}
+                {!tempOverrideOn && (
+                  <div className="seg-hint">Live weather at the route midpoint is used unless you set your own.</div>
+                )}
               </div>
             )}
           </div>
@@ -563,6 +818,25 @@ function Planner() {
           </button>
 
           {error && <div className="error-box">{error}</div>}
+        </aside>
+
+        <div className="map-wrap">
+          <div ref={mapContainer} className="map" />
+          {plan && origin && destination && (
+            <VoiceBar origin={origin} destination={destination} onAddStop={handleAddVoiceStop} />
+          )}
+        </div>
+
+        <aside className="panel panel-right">
+          {!plan && (
+            <div className="results-empty">
+              <div className="row-label">The verdict</div>
+              <p className="seg-hint" style={{ marginTop: 4 }}>
+                Plan a trip and what's left in the battery on arrival shows up here, next to every charging stop the
+                plan verified.
+              </p>
+            </div>
+          )}
 
           {plan && (
             <>
@@ -579,10 +853,8 @@ function Planner() {
                           : '⚠ Tight - check the plan below'}
                 </div>
                 <div className="big">
-                  {plan.arrival_pct < 0
-                    ? `About ${Math.abs(Math.round(plan.leeway_mi))} mi short`
-                    : `Arrive at ${plan.arrival_pct}%`}{' '}
-                  <small>{plan.leeway_mi >= 0 ? `${plan.leeway_mi} mi of leeway` : ''}</small>
+                  {plan.arrival_pct < 0 ? `About ${dist(Math.abs(plan.leeway_mi))} short` : `Arrive at ${plan.arrival_pct}%`}{' '}
+                  <small>{plan.leeway_mi >= 0 ? `${dist(plan.leeway_mi)} of leeway` : ''}</small>
                 </div>
                 <div className="gauge">
                   <div className="gauge-track">
@@ -601,8 +873,8 @@ function Planner() {
                   </div>
                 </div>
                 <div className="sub">
-                  {plan.distance_mi} mi · {plan.stops.length} stop{plan.stops.length === 1 ? '' : 's'} ·{' '}
-                  {Math.round(plan.duration_min / 60)} h {plan.duration_min % 60} min total
+                  {dist(plan.distance_mi)} · {plan.stops.length} stop{plan.stops.length === 1 ? '' : 's'} ·{' '}
+                  {Math.floor(plan.duration_min / 60)} h {plan.duration_min % 60} min total
                 </div>
                 {plan.weather && <div className="sub">Range adjusted for {plan.weather.summary}</div>}
                 {plan.safety_flags.slice(0, 3).map((f, i) => (
@@ -616,15 +888,49 @@ function Planner() {
                 {plan.note && <div className="sub note">{plan.note}</div>}
               </div>
 
+              <div>
+                {!routeAlts && (
+                  <button className="link-btn" style={{ marginLeft: 0 }} onClick={handleCompareRoutes}>
+                    compare other corridors →
+                  </button>
+                )}
+                {routeAlts && routeAlts.length > 1 && (
+                  <div>
+                    <div className="row-label">Corridors</div>
+                    <div className="recents" style={{ marginTop: 0 }}>
+                      {routeAlts.map((alt, i) => (
+                        <button
+                          key={i}
+                          className={`chip${i === chosenAlt ? ' chip-on' : ''}`}
+                          onClick={() => handleChooseAlt(i)}
+                          disabled={loading}
+                        >
+                          {i === 0 ? 'direct' : `alt ${i}`} · {dist(alt.distance_mi)} ·{' '}
+                          {Math.floor(alt.duration_min / 60)}h{alt.duration_min % 60}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="seg-hint">Times are driving only - charging stops get planned after you pick.</div>
+                  </div>
+                )}
+              </div>
+
               <div className="itin">
                 {plan.stops.map((s, i) => (
                   <div className="leg" key={i}>
-                    <span className={s.is_supercharger ? 'pin-dot pin-dot-sc' : 'pin-dot pin-dot-ccs'} />
+                    <span
+                      className={
+                        s.is_waypoint ? 'pin-dot pin-dot-wp' : s.is_supercharger ? 'pin-dot pin-dot-sc' : 'pin-dot pin-dot-ccs'
+                      }
+                    />
                     <div>
                       <div className="t">{s.title}</div>
                       <div className="d">
-                        {s.network} · arrive {s.arrive_pct}% → charge to {s.charge_to_pct}%
-                        {s.charge_time_min ? ` · ${s.charge_time_min} min` : ''}
+                        {s.is_waypoint
+                          ? `your stop · pass through with ${s.arrive_pct}%`
+                          : `${s.network} · arrive ${s.arrive_pct}% → charge to ${s.charge_to_pct}%${
+                              s.charge_time_min ? ` · ${s.charge_time_min} min` : ''
+                            }`}
                         {!s.reachable && ' · may not be reachable, double-check before you leave'}
                       </div>
                     </div>
@@ -652,15 +958,14 @@ function Planner() {
             Accuracy record →
           </a>
         </aside>
-        <div className="map-wrap">
-          <div ref={mapContainer} className="map" />
-          {plan && origin && destination && (
-            <VoiceBar origin={origin} destination={destination} onAddStop={handleAddVoiceStop} />
-          )}
-        </div>
       </div>
       {showCarSetup && (
-        <CarSetup currentRangeMi={fullRangeMi} onSave={handleCarSetupSave} onClose={() => setShowCarSetup(false)} />
+        <CarSetup
+          currentRangeMi={fullRangeMi}
+          units={units}
+          onSave={handleCarSetupSave}
+          onClose={() => setShowCarSetup(false)}
+        />
       )}
       {pendingTrip && (
         <TripFeedback pending={pendingTrip} onLog={handleLogTripResult} onDismiss={handleDismissPendingTrip} />
@@ -672,6 +977,7 @@ function Planner() {
           origin={origin}
           destination={destination}
           batteryPct={batteryPct}
+          units={units}
           onClose={() => setShowTripCard(false)}
         />
       )}

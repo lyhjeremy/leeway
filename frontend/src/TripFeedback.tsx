@@ -28,7 +28,7 @@ export default function TripFeedback({ pending, onLog, onDismiss }: Props) {
         </div>
         <p className="modal-lede">
           You planned {pending.originLabel.split(',')[0]} → {pending.destinationLabel.split(',')[0]}, predicted to
-          arrive at {pending.predictedArrivalPct}%. What did the car actually show when you got there?
+          arrive at {Math.round(pending.predictedArrivalPct)}%. What did the car actually show when you got there?
         </p>
 
         <div className="modal-inputs">

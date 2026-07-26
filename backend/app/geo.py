@@ -79,6 +79,19 @@ def bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return math.degrees(math.atan2(x, y)) % 360
 
 
+def destination_point(lat: float, lon: float, bearing: float, distance_mi: float) -> tuple[float, float]:
+    """Great-circle projection: the (lat, lon) you reach from a point going
+    `bearing` degrees for `distance_mi` miles."""
+    r_mi = 3958.8
+    d = distance_mi / r_mi
+    b = math.radians(bearing)
+    p1 = math.radians(lat)
+    l1 = math.radians(lon)
+    p2 = math.asin(math.sin(p1) * math.cos(d) + math.cos(p1) * math.sin(d) * math.cos(b))
+    l2 = l1 + math.atan2(math.sin(b) * math.sin(d) * math.cos(p1), math.cos(d) - math.sin(p1) * math.sin(p2))
+    return math.degrees(p2), (math.degrees(l2) + 540) % 360 - 180
+
+
 def headwind_component_mph(wind_speed_mph: float, wind_from_deg: float, travel_bearing_deg: float) -> float:
     """Positive = headwind, negative = tailwind. wind_from_deg is the
     meteorological convention (direction the wind blows FROM). A headwind is
