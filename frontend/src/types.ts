@@ -41,6 +41,28 @@ export interface WeatherInfo {
   headwind_mph: number
 }
 
+export interface VoiceResult {
+  name: string
+  brand: string | null
+  lat: number
+  lon: number
+  drive_through: string | null
+  opening_hours: string | null
+  detour_min: number
+  within_budget: boolean
+}
+
+export interface VoiceSearchResponse {
+  parsed: {
+    category: string
+    brand: string | null
+    drive_through_required: boolean
+    max_detour_min: number
+  }
+  results: VoiceResult[]
+  note: string | null
+}
+
 export interface PlanResponse {
   distance_mi: number
   duration_min: number

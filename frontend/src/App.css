@@ -88,9 +88,114 @@
   overflow-y: auto;
 }
 
-.map {
+.map-wrap {
+  position: relative;
   flex: 1;
   min-height: 0;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+.voice-bar-wrap {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  max-width: 420px;
+  z-index: 10;
+}
+
+.voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: 99px;
+  padding: 11px 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.voice-search-icon {
+  flex: none;
+}
+
+.voice-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  font-family: inherit;
+  background: transparent;
+  color: var(--ink);
+}
+
+.mic-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--go-green);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mic-btn.listening {
+  background: #b23b3b;
+}
+
+.voice-chip {
+  margin-top: 8px;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--ink2);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.voice-chip-error {
+  color: #b23b3b;
+}
+
+.voice-query {
+  font-style: italic;
+  color: var(--ink2);
+  margin-bottom: 6px;
+}
+
+.voice-note {
+  color: var(--ink2);
+}
+
+.voice-result-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.voice-result-row + .voice-result-row {
+  border-top: 1px solid var(--hair);
+}
+
+.voice-result-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.voice-result-sub {
+  font-size: 12px;
+  color: var(--ink2);
+  margin-top: 1px;
 }
 
 .field-group {

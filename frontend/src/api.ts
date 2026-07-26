@@ -1,4 +1,4 @@
-import type { GeocodeResult, LatLon, PlanResponse, StopMode } from './types'
+import type { GeocodeResult, LatLon, PlanResponse, StopMode, VoiceSearchResponse } from './types'
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
 
@@ -46,6 +46,19 @@ export async function planTrip(params: {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.detail ?? `plan failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function voiceSearch(query: string, origin: LatLon, destination: LatLon): Promise<VoiceSearchResponse> {
+  const res = await fetch(`${API_BASE}/api/voice-search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, origin, destination }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail ?? `voice search failed: ${res.status}`)
   }
   return res.json()
 }

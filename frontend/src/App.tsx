@@ -5,6 +5,7 @@ import './App.css'
 import LocationInput from './LocationInput'
 import CarSetup from './CarSetup'
 import TripCard from './TripCard'
+import VoiceBar from './VoiceBar'
 import AccuracyPage from './AccuracyPage'
 import { planTrip } from './api'
 import type { ChargingStop, GeocodeResult, LatLon, PlanResponse, StopMode } from './types'
@@ -55,6 +56,7 @@ function Planner() {
   const [recentTrips, setRecentTrips] = useState<RecentTrip[]>(() => loadRecentTrips())
   const [excludedStationIds, setExcludedStationIds] = useState<number[]>([])
   const [forcedStop, setForcedStop] = useState<LatLon | null>(null)
+  const [forcedStopTitle, setForcedStopTitle] = useState('Your chosen stop')
   const [pickingStop, setPickingStop] = useState(false)
   const [shareMsg, setShareMsg] = useState<string | null>(null)
   const [showTripCard, setShowTripCard] = useState(false)
@@ -80,8 +82,9 @@ function Planner() {
     const onClick = (e: maplibregl.MapMouseEvent) => {
       const chosen = { lat: e.lngLat.lat, lon: e.lngLat.lng }
       setForcedStop(chosen)
+      setForcedStopTitle('Your chosen stop')
       setPickingStop(false)
-      runPlan({ excludedStationIds, forcedStop: chosen })
+      runPlan({ excludedStationIds, forcedStop: chosen, forcedStopTitle: 'Your chosen stop' })
     }
     map.on('click', onClick)
     return () => {
@@ -156,7 +159,7 @@ function Planner() {
     else map.once('load', drawRoute)
   }, [plan, origin, destination])
 
-  async function runPlan(overrides: { excludedStationIds: number[]; forcedStop: LatLon | null }) {
+  async function runPlan(overrides: { excludedStationIds: number[]; forcedStop: LatLon | null; forcedStopTitle?: string }) {
     if (!origin || !destination) {
       setError('Pick both a start and a destination from the dropdown.')
       return
@@ -174,6 +177,7 @@ function Planner() {
         avoidHighways,
         excludedStationIds: overrides.excludedStationIds,
         forcedStop: overrides.forcedStop,
+        forcedStopTitle: overrides.forcedStopTitle ?? forcedStopTitle,
       })
       setPlan(result)
       saveRecentTrip({ origin, destination })
@@ -202,6 +206,16 @@ function Planner() {
   function clearForcedStop() {
     setForcedStop(null)
     runPlan({ excludedStationIds, forcedStop: null })
+  }
+
+  function handleAddVoiceStop(lat: number, lon: number, title: string) {
+    // A voice-found stop is just another forced waypoint - reuses the exact
+    // same mandatory-stop mechanism as "insist on a stop (click the map)",
+    // not a new insertion path.
+    const chosen = { lat, lon }
+    setForcedStop(chosen)
+    setForcedStopTitle(title)
+    runPlan({ excludedStationIds, forcedStop: chosen, forcedStopTitle: title })
   }
 
   async function handleShareStop(stop: ChargingStop) {
@@ -413,7 +427,12 @@ function Planner() {
             Accuracy record →
           </a>
         </aside>
-        <div ref={mapContainer} className="map" />
+        <div className="map-wrap">
+          <div ref={mapContainer} className="map" />
+          {plan && origin && destination && (
+            <VoiceBar origin={origin} destination={destination} onAddStop={handleAddVoiceStop} />
+          )}
+        </div>
       </div>
       {showCarSetup && (
         <CarSetup currentRangeMi={fullRangeMi} onSave={handleCarSetupSave} onClose={() => setShowCarSetup(false)} />
