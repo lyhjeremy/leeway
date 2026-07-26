@@ -260,6 +260,17 @@ function Planner() {
       setError("Enter your car's real 100% range first (between 50 and 600 miles).")
       return
     }
+    // The floor is max(reserve %, 30-mile reserve as a %) - on a small range
+    // the mile part can climb above the charge-to slider, and a plan that
+    // charges to at-or-below its own floor can never make progress.
+    const floorPct = Math.max(reservePct, (30 / fullRangeMi) * 100)
+    if (chargeToPct <= floorPct + 5) {
+      setError(
+        `Charging to ${chargeToPct}% can't clear your reserve floor of ${Math.round(floorPct)}%. ` +
+          'Raise the charge-to level (advanced) or lower the reserve.',
+      )
+      return
+    }
     setLoading(true)
     setError(null)
     try {

@@ -14,7 +14,7 @@ from .voice import VoiceSearchError, find_stops
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 
 app = FastAPI(title="Leeway API")
 
@@ -80,6 +80,18 @@ class PlanRequest(BaseModel):
 
 @app.post("/api/plan")
 async def plan(req: PlanRequest):
+    # The reserve floor is max(reserve_pct, reserve_mi as a %), so a small
+    # full range can push the floor above charge_to_pct - and a plan that
+    # charges to at-or-below its own floor can never make progress (the
+    # planner would pick the same station over and over until the stop cap).
+    floor_pct = max(req.reserve_pct, req.reserve_mi / req.full_range_mi * 100)
+    if req.charge_to_pct <= floor_pct + 5:
+        raise HTTPException(
+            422,
+            f"Charging to {req.charge_to_pct:.0f}% can't clear your reserve floor of "
+            f"{floor_pct:.0f}% (your {req.reserve_mi:.0f}-mile reserve is a big share of a "
+            f"{req.full_range_mi:.0f}-mile range). Raise the charge-to level or lower the reserve.",
+        )
     try:
         return await plan_trip(
             origin=(req.origin.lat, req.origin.lon),

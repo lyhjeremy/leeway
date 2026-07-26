@@ -425,6 +425,19 @@ async def plan_trip(
 
         current_start = (chosen["lat"], chosen["lon"])
         current_pct = charge_to_pct
+        # Defense in depth behind main.py's request-level check: if charging
+        # to the target still can't clear the floor, another stop won't
+        # help either - stop here honestly instead of picking the same
+        # station until the stop cap.
+        if charge_to_pct <= range_model.reserve_floor_pct(full_range_mi, reserve_pct, reserve_mi):
+            note = (
+                f"Charging to {charge_to_pct:.0f}% doesn't clear your reserve floor, so more "
+                "stops can't help - raise the charge-to level or lower the reserve."
+            )
+            final_arrival_pct = current_pct
+            final_leeway_mi = 0.0
+            feasible = False
+            break
     else:
         note = f"This trip needs more than {MAX_STOPS} charging stops - the plan below stops there rather than loop forever."
         final_arrival_pct = current_pct
