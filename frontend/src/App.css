@@ -33,6 +33,13 @@
   outline-offset: 2px;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
 .app-header {
   height: 56px;
   flex: none;
@@ -140,6 +147,19 @@
    shrink. */
 .panel > * {
   flex-shrink: 0;
+}
+
+/* Section rhythm: a hairline and extra air between functional groups reads
+   the grouping without adding boxes-in-boxes. */
+.panel-left > div + div {
+  border-top: 1px solid var(--hair);
+  padding-top: 13px;
+}
+
+.panel-left > .recents + div,
+.panel-left > .field-group + div {
+  border-top: none;
+  padding-top: 0;
 }
 
 .map-wrap {
@@ -356,9 +376,49 @@
   width: 48px;
 }
 
+/* Instrument-styled sliders - the native control looked default-issue next
+   to the mono digits and the gauge. Track echoes the gauge track; the thumb
+   is an ink dot with a card ring, same language as the timeline pins. */
 .battery-row input[type='range'] {
   flex: 1;
-  accent-color: var(--ink);
+  appearance: none;
+  -webkit-appearance: none;
+  height: 22px;
+  background: transparent;
+}
+
+.battery-row input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--hair);
+}
+
+.battery-row input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 3px solid var(--card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.battery-row input[type='range']::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--hair);
+}
+
+.battery-row input[type='range']::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 3px solid var(--card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
 }
 
 .range-input {
@@ -478,6 +538,15 @@
   cursor: pointer;
   font-family: inherit;
   white-space: nowrap;
+  transition: transform 0.1s ease, opacity 0.15s;
+}
+
+.plan-btn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.plan-btn:active:not(:disabled) {
+  transform: scale(0.985);
 }
 
 .plan-btn:disabled {
@@ -601,14 +670,42 @@
 }
 
 .leg {
+  position: relative;
   display: flex;
   gap: 11px;
-  padding: 10px 2px;
+  padding: 9px 2px 9px 26px;
   align-items: flex-start;
 }
 
-.leg + .leg {
-  border-top: 1px dashed var(--hair);
+/* The rail: one continuous line through every row, clipped to start at the
+   first pin and end at the last. Pins sit on the rail with a card-colored
+   ring so the line reads as passing behind them. */
+.leg::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--hair);
+}
+
+.leg:first-child::before {
+  top: 16px;
+}
+
+.leg:last-child::before {
+  bottom: auto;
+  height: 16px;
+}
+
+.leg .pin-dot,
+.leg .pin-dot-start,
+.leg .pin-dot-end {
+  position: absolute;
+  left: 2px;
+  top: 12px;
+  box-shadow: 0 0 0 3px var(--card);
 }
 
 .leg .t {
@@ -642,7 +739,24 @@
 .pin-dot-wp {
   border-radius: 50%;
   border: 3px solid var(--muted);
-  background: none;
+  background: var(--card);
+}
+
+.pin-dot-start,
+.pin-dot-end {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.pin-dot-start {
+  background: var(--ink);
+}
+
+.pin-dot-end {
+  border: 3px solid var(--ink);
+  background: var(--card);
 }
 
 .recents {

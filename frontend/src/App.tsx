@@ -831,9 +831,19 @@ function Planner() {
           {!plan && (
             <div className="results-empty">
               <div className="row-label">The verdict</div>
+              <div className="gauge" style={{ margin: '10px 0 6px' }}>
+                <div className="gauge-track">
+                  <div className="gauge-reserve" style={{ width: '15%' }} />
+                </div>
+                <div className="gauge-scale">
+                  <span>0%</span>
+                  <span>reserve</span>
+                  <span>100%</span>
+                </div>
+              </div>
               <p className="seg-hint" style={{ marginTop: 4 }}>
-                Plan a trip and what's left in the battery on arrival shows up here, next to every charging stop the
-                plan verified.
+                Plan a trip and this gauge fills to what's left in the battery when you arrive, next to every charging
+                stop the plan verified.
               </p>
             </div>
           )}
@@ -915,7 +925,16 @@ function Planner() {
                 )}
               </div>
 
+              {/* The trip as a timeline - a route is a sequence along one
+                  line, so the rail is information, not decoration. */}
               <div className="itin">
+                <div className="leg">
+                  <span className="pin-dot pin-dot-start" />
+                  <div>
+                    <div className="t">Leave with {batteryPct}%</div>
+                    <div className="d">{origin?.label.split(',')[0]}</div>
+                  </div>
+                </div>
                 {plan.stops.map((s, i) => (
                   <div className="leg" key={i}>
                     <span
@@ -946,6 +965,15 @@ function Planner() {
                     </div>
                   </div>
                 ))}
+                <div className="leg">
+                  <span className="pin-dot pin-dot-end" />
+                  <div>
+                    <div className="t">
+                      {plan.arrival_pct < 0 ? "Won't make it as planned" : `Arrive at ${plan.arrival_pct}%`}
+                    </div>
+                    <div className="d">{destination?.label.split(',')[0]}</div>
+                  </div>
+                </div>
               </div>
 
               <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setShowTripCard(true)}>
