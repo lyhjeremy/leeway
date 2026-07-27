@@ -1,0 +1,13 @@
+{
+	"appId": "io.github.lyhjeremy.leeway",
+	"appName": "Leeway",
+	"webDir": "dist",
+	"ios": {
+		"contentInset": "never"
+	},
+	"packageClassList": [
+		"LocalNotificationsPlugin",
+		"SharePlugin",
+		"StatusBarPlugin"
+	]
+}

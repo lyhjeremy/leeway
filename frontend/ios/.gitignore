@@ -1,0 +1,13 @@
+App/build
+App/Pods
+App/output
+DerivedData
+xcuserdata
+
+# Cordova plugins for Capacitor
+capacitor-cordova-ios-plugins
+
+# Generated Config files
+
+# NOTE: App/App/public and the generated config files ARE committed here
+# on purpose - the handoff person builds with Xcode alone, no npm needed.

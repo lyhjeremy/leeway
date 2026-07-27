@@ -14,7 +14,7 @@ from .voice import VoiceSearchError, find_stops
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.15.0"
+VERSION = "0.15.1"
 
 app = FastAPI(title="Leeway API")
 
@@ -24,6 +24,10 @@ app.add_middleware(
         "https://lyhjeremy.github.io",
         "http://localhost:5173",
         "http://localhost:4173",
+        # The iOS app (Capacitor WKWebView) serves the bundled frontend from
+        # its own scheme - these are its Origin headers, not real hosts.
+        "capacitor://localhost",
+        "https://localhost",
     ],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],

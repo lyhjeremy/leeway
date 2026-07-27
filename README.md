@@ -68,6 +68,16 @@ stations 30min, weather 15min) to stretch the free-tier quotas — the ORS
 daily directions ceiling is the stack's real scarcity, documented at
 roughly 150–200 plans/day.
 
+## iOS app
+
+The same frontend ships as a native iOS app: a Capacitor shell (in
+`frontend/ios/`, Swift Package Manager, no CocoaPods) that adds what the
+website can't do — a local-notification reminder to log how a planned trip
+went, the native share sheet for sending a stop to the Tesla app, and
+theme-matched status bar / safe areas. The built web bundle is committed,
+so building the app needs only Xcode: see `IOS_HANDOFF.md` for the
+sign-and-ship steps.
+
 ## Local dev
 
 ```

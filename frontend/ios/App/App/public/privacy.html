@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Leeway — privacy</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; line-height: 1.55; color: #191b16; }
+    h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 28px; }
+    @media (prefers-color-scheme: dark) { body { background: #171a15; color: #f4f5ee; } }
+  </style>
+</head>
+<body>
+  <h1>Leeway privacy policy</h1>
+  <p>Leeway is an EV trip planner. It has no accounts, no analytics, no ads,
+  and no tracking of any kind.</p>
+
+  <h2>What stays on your device</h2>
+  <p>Your car's range, unit preferences, recent trips, and your logged
+  predicted-vs-actual trip history are stored only on your device (browser
+  storage). Nothing about you is uploaded or shared. Deleting the app (or
+  clearing site data) deletes all of it.</p>
+
+  <h2>What leaves your device</h2>
+  <p>When you plan a trip, the route endpoints and your planning settings
+  (battery %, range, preferences) are sent to Leeway's own backend, which
+  queries routing (OpenRouteService), charging stations (Open Charge Map),
+  weather (Open-Meteo), map data (OpenStreetMap/Overpass), and Caltrans road
+  closures to build the plan. These requests contain trip coordinates but no
+  identity, and Leeway keeps no record of them beyond short-lived caches.
+  Voice/text stop searches are parsed by Google's Gemini API; only the search
+  phrase and route area are sent.</p>
+
+  <h2>Location</h2>
+  <p>The locate-me button uses your device location once, to center the map
+  and prefill your starting point. Location is never stored or transmitted
+  except as the start of a route you explicitly plan.</p>
+
+  <h2>Notifications</h2>
+  <p>The iOS app can schedule a local reminder to log how a planned trip
+  went. It is scheduled entirely on your device; there is no push server.</p>
+
+  <h2>Contact</h2>
+  <p>Questions: open an issue at
+  <a href="https://github.com/lyhjeremy/leeway">github.com/lyhjeremy/leeway</a>.</p>
+</body>
+</html>

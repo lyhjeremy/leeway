@@ -1505,3 +1505,24 @@ input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
     border-radius: 18px 18px 0 0;
   }
 }
+
+/* iOS shell only (html.native, set in main.tsx): the webview runs
+   edge-to-edge, so floating controls clear the notch and the home
+   indicator. Pure no-ops on the web where the class never exists. */
+.native .voice-bar-wrap {
+  top: calc(16px + env(safe-area-inset-top));
+}
+
+.native .accuracy-page {
+  padding-top: env(safe-area-inset-top);
+}
+
+@media (max-width: 1000px) {
+  .native .float-chips {
+    bottom: calc(44px + env(safe-area-inset-bottom));
+  }
+
+  .native .app-body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

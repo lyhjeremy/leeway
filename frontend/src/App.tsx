@@ -9,6 +9,7 @@ import VoiceBar from './VoiceBar'
 import AccuracyPage from './AccuracyPage'
 import TripFeedback from './TripFeedback'
 import { fetchRoutes, geocode, planTrip } from './api'
+import { cancelTripLogNudge, scheduleTripLogNudge, shareNative, syncStatusBar } from './native'
 import type {
   ChargerFilter,
   ChargingStop,
@@ -264,6 +265,7 @@ function Planner() {
     setTheme(next)
     saveTheme(next)
     document.documentElement.dataset.theme = next
+    syncStatusBar(next)
     // The map gets its own night: swap the whole style, then force the
     // route effect to re-run once the new style loads - setStyle wipes
     // every source, layer, and the collapsed-attribution state.
@@ -683,6 +685,14 @@ function Planner() {
         feasible: result.feasible,
         startBatteryPct: batteryPct,
       })
+      // iOS app only: a local notification after the drive should be over,
+      // nudging the ten-second predicted-vs-actual log. No-op on the web.
+      scheduleTripLogNudge({
+        originLabel: o.label,
+        destinationLabel: d.label,
+        departureEpoch: departureLocal ? Date.parse(departureLocal) / 1000 : null,
+        durationMin: result.duration_min,
+      })
     } catch (e) {
       // A network-level failure surfaces as TypeError('Failed to fetch') -
       // raw browser-speak that reads like a bug. Say what it usually means.
@@ -807,6 +817,10 @@ function Planner() {
     // behind "share a stop's address into the Tesla app" from the product
     // plan), while a raw geo: URI has much weaker cross-app support.
     const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lon}`
+    // Inside the iOS shell WKWebView has no navigator.share - the native
+    // share sheet (which is how a stop reaches the Tesla app) goes through
+    // the Capacitor plugin instead.
+    if (await shareNative({ title: stop.title, text: `Charging stop: ${stop.title}`, url: mapsUrl })) return
     if (navigator.share) {
       try {
         await navigator.share({ title: stop.title, text: `Charging stop: ${stop.title}`, url: mapsUrl })
@@ -843,11 +857,13 @@ function Planner() {
     logTripResult(pendingTrip, actualArrivalPct)
     setPendingTrip(null)
     setCalibration(computeCalibration())
+    cancelTripLogNudge()
   }
 
   function handleDismissPendingTrip() {
     clearPendingTrip()
     setPendingTrip(null)
+    cancelTripLogNudge()
   }
 
   const rangeDisplay = Math.round(units === 'km' ? fullRangeMi * MI_TO_KM : fullRangeMi)
