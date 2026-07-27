@@ -159,10 +159,11 @@ class RateLimited(Exception):
 _RETRY_DELAYS_S = [2, 8, 20]
 
 # Longest any single Overpass-backed hazard check may hold up a plan.
-# Generous enough for a heavy around-polyline query on a healthy server
-# (~2-8s typical), small enough that a bad Overpass day costs one wait,
-# not a 100s hang that Render's proxy then kills with a 502.
-POINT_HAZARD_BUDGET_S = 20
+# Enough for a healthy server (rail ~7s, left turns ~14s measured), and
+# past it the check degrades to no flags. Paired with the circuit breaker
+# in providers: without one, a timed-out check caches nothing and so
+# re-pays this cost on every subsequent plan.
+POINT_HAZARD_BUDGET_S = 15
 
 
 async def _safe_directions(origin, destination, avoid_tolls, avoid_highways, avoid_polygons=None, avoid_ferries=False):

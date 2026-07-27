@@ -97,6 +97,33 @@ _weather_cache = _TTLCache(ttl_s=900, max_entries=64)
 _overpass_cache = _TTLCache(ttl_s=3600, max_entries=64)
 
 
+# Overpass goes through bad spells lasting minutes to hours - the shared
+# community servers shed load with 504s regardless of how small the query
+# is (measured: even a single-clause query 504s while a heavier one
+# succeeds seconds later). Without a breaker every plan re-discovers the
+# outage at full retry cost, and because a failed check caches nothing, it
+# pays that cost again on the very next plan - measured live as a flat 20s
+# added to every single plan, indefinitely. The breaker turns a bad spell
+# into one slow plan instead of an unbounded run of them.
+OVERPASS_BREAKER_THRESHOLD = 3
+OVERPASS_BREAKER_COOLDOWN_S = 300
+_overpass_breaker: dict = {"failures": 0, "open_until": 0.0}
+
+
+class OverpassUnavailable(httpx.HTTPError):
+    """The breaker is open - Overpass failed enough recently that we're not
+    asking again yet. A subclass of HTTPError so every existing caller that
+    degrades on network trouble treats it identically."""
+
+    def __init__(self):
+        super().__init__("overpass circuit breaker open")
+
+
+def reset_overpass_breaker() -> None:
+    _overpass_breaker["failures"] = 0
+    _overpass_breaker["open_until"] = 0.0
+
+
 class ORSNotConfigured(Exception):
     pass
 
@@ -556,6 +583,10 @@ async def overpass_raw(query: str) -> dict:
     cached = _overpass_cache.get(query)
     if cached is not None:
         return cached
+    # A cached answer is served above even while the breaker is open - the
+    # breaker only stops us making NEW requests during a known bad spell.
+    if time.time() < _overpass_breaker["open_until"]:
+        raise OverpassUnavailable()
     headers = {"User-Agent": "Leeway-EV-Trip-Planner/0.1 (github.com/lyhjeremy/leeway)"}
     last_error: Exception | None = None
     async with httpx.AsyncClient(timeout=httpx.Timeout(20, connect=5)) as client:
@@ -574,11 +605,23 @@ async def overpass_raw(query: str) -> dict:
                 )
                 await asyncio.sleep(2 * (attempt + 1))
                 continue
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError:
+                _note_overpass_failure()
+                raise
             result = resp.json()
             _overpass_cache.set(query, result)
+            reset_overpass_breaker()
             return result
+    _note_overpass_failure()
     raise last_error if last_error is not None else httpx.ConnectError("overpass unavailable")
+
+
+def _note_overpass_failure() -> None:
+    _overpass_breaker["failures"] += 1
+    if _overpass_breaker["failures"] >= OVERPASS_BREAKER_THRESHOLD:
+        _overpass_breaker["open_until"] = time.time() + OVERPASS_BREAKER_COOLDOWN_S
 
 
 async def search_overpass(bbox: tuple[float, float, float, float], tag_filters: list[tuple[str, str]], max_results: int = 60) -> list[dict]:

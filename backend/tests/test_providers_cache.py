@@ -3,6 +3,8 @@ directions ceiling most of all) - these tests prove identical requests
 genuinely skip the network, and that the cache keys on everything that
 changes the answer."""
 
+import time
+
 import httpx
 import pytest
 
@@ -84,6 +86,7 @@ def counting_network(monkeypatch):
     providers._geocode_cache.clear()
     providers._weather_cache.clear()
     providers._overpass_cache.clear()
+    providers.reset_overpass_breaker()
     CountingClient.requests = 0
     yield
     providers._directions_cache.clear()
@@ -91,6 +94,7 @@ def counting_network(monkeypatch):
     providers._geocode_cache.clear()
     providers._weather_cache.clear()
     providers._overpass_cache.clear()
+    providers.reset_overpass_breaker()
 
 
 def test_identical_directions_requests_hit_network_once(counting_network):
@@ -173,6 +177,47 @@ def test_overpass_all_down_raises_never_pretends_empty(counting_network, no_slee
     with pytest.raises(httpx.HTTPError):
         run(providers.overpass_raw("[out:json];node(43);out;"))
     assert len(FailoverClient.calls) == 3  # every attempt across both instances
+
+
+def test_breaker_stops_asking_a_dead_overpass_on_every_plan(counting_network, no_sleep, monkeypatch):
+    """The real production failure: a check that times out caches nothing,
+    so without a breaker EVERY later plan pays the full retry cost again -
+    measured as a flat 20s on every plan for as long as the outage lasts."""
+    monkeypatch.setattr(providers.httpx, "AsyncClient", AllDownClient)
+    FailoverClient.calls = []
+    for i in range(3):
+        with pytest.raises(httpx.HTTPError):
+            run(providers.overpass_raw(f"[out:json];node({100 + i});out;"))
+    calls_before = len(FailoverClient.calls)
+
+    # Breaker is open now: further queries fail instantly, touching no network.
+    with pytest.raises(providers.OverpassUnavailable):
+        run(providers.overpass_raw("[out:json];node(999);out;"))
+    assert len(FailoverClient.calls) == calls_before
+
+
+def test_breaker_still_serves_cached_answers_while_open(counting_network, no_sleep, monkeypatch):
+    """An open breaker must not blind us to answers we already hold."""
+    monkeypatch.setattr(providers.httpx, "AsyncClient", FailoverClient)
+    FailoverClient.calls = []
+    warm = run(providers.overpass_raw("[out:json];node(7);out;"))
+
+    providers._overpass_breaker["open_until"] = time.time() + 300
+    assert run(providers.overpass_raw("[out:json];node(7);out;")) == warm
+
+
+def test_a_success_closes_the_breaker(counting_network, no_sleep, monkeypatch):
+    monkeypatch.setattr(providers.httpx, "AsyncClient", AllDownClient)
+    FailoverClient.calls = []
+    for i in range(3):
+        with pytest.raises(httpx.HTTPError):
+            run(providers.overpass_raw(f"[out:json];node({200 + i});out;"))
+    assert providers._overpass_breaker["open_until"] > 0
+
+    providers.reset_overpass_breaker()
+    monkeypatch.setattr(providers.httpx, "AsyncClient", FailoverClient)
+    run(providers.overpass_raw("[out:json];node(8);out;"))
+    assert providers._overpass_breaker["failures"] == 0
 
 
 def test_identical_station_searches_hit_network_once(counting_network):

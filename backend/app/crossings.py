@@ -34,7 +34,7 @@ SIGNAL_RADIUS_M = 40
 MAJOR_ROAD_RADIUS_M = 30
 DEDUPE_MI = 0.25
 RAIL_BUFFER_M = 30
-MAX_POLY_POINTS = 300  # decimation target for the rail-crossing polyline query
+MAX_POLY_POINTS = 150  # hard cap on polyline points in an around: query
 
 # A left turn OFF an artery you're already driving is normal driving - you
 # wait in its turn pocket / center turn lane and cross only the oncoming
@@ -46,6 +46,26 @@ MAX_POLY_POINTS = 300  # decimation target for the rail-crossing polyline query
 TURN_FROM_ROAD_PARALLEL_DEG = 35.0
 
 MI_PER_M = 0.000621371
+
+
+def _decimate(coords: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Thin a route polyline to at most MAX_POLY_POINTS points for an
+    Overpass `around:` filter. Overpass reads a coordinate list as a
+    POLYLINE, not as separate points, so thinning keeps full route coverage
+    and only cuts corners slightly - a 30m radius absorbs that.
+
+    Ceiling division, because floor division doesn't actually respect the
+    cap: with 577 vertices and a 300 cap, 577//300 == 1 sent all 577
+    points, and the constant quietly meant nothing below 2x its value."""
+    if len(coords) <= MAX_POLY_POINTS:
+        return coords
+    step = -(-len(coords) // MAX_POLY_POINTS)
+    sampled = coords[::step]
+    # Keep the true endpoint - a thinned line that stops short would miss
+    # hazards in the last stretch.
+    if sampled[-1] != coords[-1]:
+        sampled.append(coords[-1])
+    return sampled
 
 
 def _pt_seg_dist_mi(lat: float, lon: float, a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -210,8 +230,7 @@ async def wide_crossing_flags(coords: list[tuple[float, float]], cum: list[float
     paper but not on the ground. Crossing ways tagged bridge/tunnel or
     motorway are excluded, which removes most of those, but a rare false
     positive is possible; the copy says 'check it' rather than 'gospel'."""
-    step = max(1, len(coords) // MAX_POLY_POINTS)
-    sampled = coords[::step]
+    sampled = _decimate(coords)
     poly = ",".join(f"{lat:.5f},{lon:.5f}" for lon, lat in sampled)
     query = (
         f'[out:json][timeout:18];'
@@ -343,8 +362,7 @@ async def lane_closure_flags(coords: list[tuple[float, float]], cum: list[float]
 async def rail_crossing_flags(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
     """Rail level crossings on the route itself, from OSM's
     railway=level_crossing nodes within a tight buffer of the polyline."""
-    step = max(1, len(coords) // MAX_POLY_POINTS)
-    sampled = coords[::step]
+    sampled = _decimate(coords)
     poly = ",".join(f"{lat:.5f},{lon:.5f}" for lon, lat in sampled)
     query = f'[out:json][timeout:18];node(around:{RAIL_BUFFER_M},{poly})["railway"="level_crossing"];out;'
 
