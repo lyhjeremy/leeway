@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Leeway — the second opinion before you leave</title>
-<meta name="description" content="An EV trip planner for cars whose batteries have lost range with age. Tell it what your car does today, and it works out what will be left when you arrive." />
+<title>Leeway — the EV planner that detours around the left turn</title>
+<meta name="description" content="Every EV planner finds you a charger. Leeway also reroutes around unprotected left turns, unsignaled four-lane crossings, rail crossings and live Caltrans closures, on a detour budget you set in minutes." />
 <meta name="theme-color" content="#eef0ea" />
 <meta property="og:title" content="Leeway — the second opinion before you leave" />
-<meta property="og:description" content="An EV trip planner for cars whose batteries have lost range with age. Every charging stop is checked against real routing data before the plan says yes." />
+<meta property="og:description" content="Every EV planner finds you a charger. This one takes a detour to dodge a left turn. An EV road trip planner for the battery your car actually has today." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://lyhjeremy.github.io/leeway/overview/" />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
@@ -73,23 +73,46 @@
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--go); flex: none; }
   .tagline { font-size: 15px; color: var(--ink2); }
 
-  /* ---------- hero: one number ---------- */
-  .hero { padding: 56px 0 74px; }
-  .hero-grid { display: grid; grid-template-columns: 1fr; gap: 40px; align-items: end; }
-  @media (min-width: 900px) {
-    .hero-grid { grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 56px; }
+  /* ---------- hero: the thing no other planner does ---------- */
+  .hero { padding: 46px 0 58px; }
+  .kicker {
+    font-size: clamp(19px, 2.2vw, 24px); font-weight: 600; color: var(--muted);
+    margin: 0 0 6px; letter-spacing: -.01em;
   }
-  .hero-verdict { min-width: 0; }
-  .hero-lead {
-    font-size: clamp(27px, 3.5vw, 40px); font-weight: 600; color: var(--ink);
-    letter-spacing: -.02em; margin: 0; line-height: 1.1;
+  .hero h1 {
+    font-size: clamp(38px, 6.1vw, 76px); font-weight: 800; letter-spacing: -.038em;
+    line-height: 1.03; margin: 0; max-width: 16ch; color: var(--ink);
   }
+  .hero h1 em { font-style: normal; color: var(--go-text); }
+  .hero-sub {
+    margin: 26px 0 0; font-size: 19.5px; color: var(--ink2); max-width: 62ch;
+  }
+  .hero-proof { margin: 38px 0 0; }
+  .hero-proof .shot { border-radius: 12px; }
+
+  /* the four claims, stated as capabilities rather than superlatives */
+  .claims {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+    gap: 30px 34px; margin: 46px 0 0; padding: 34px 0 0;
+    border-top: 2px solid var(--ink);
+  }
+  .claim h3 {
+    font-size: 17px; font-weight: 700; margin: 0 0 8px; color: var(--ink);
+    letter-spacing: -.012em; line-height: 1.25;
+  }
+  .claim p { margin: 0; font-size: 15.5px; color: var(--ink2); line-height: 1.55; }
+
   .bignum {
-    font-weight: 800; font-size: clamp(112px, 15.5vw, 198px); line-height: .82;
-    letter-spacing: -.05em; margin: 6px 0 0; color: var(--go-text);
+    font-weight: 800; font-size: clamp(88px, 11vw, 138px); line-height: .82;
+    letter-spacing: -.05em; margin: 4px 0 0; color: var(--go-text);
     font-variant-numeric: tabular-nums;
   }
-  .gauge { margin: 30px 0 0; }
+  .verdict-lead {
+    font-size: clamp(22px, 2.6vw, 30px); font-weight: 600; color: var(--ink);
+    letter-spacing: -.02em; margin: 0; line-height: 1.1;
+  }
+  .gauge { margin: 26px 0 0; max-width: 640px; }
+  .stop p.after-gauge { margin-top: 30px; }
   .gauge-track {
     position: relative; height: 24px; border-radius: 4px;
     background: var(--hair); overflow: hidden;
@@ -114,7 +137,6 @@
     letter-spacing: .06em;
   }
   .gauge-scale b { color: var(--reserve); font-weight: 600; }
-  .hero-sub { margin: 0; font-size: 19px; color: var(--ink2); }
 
   .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
   .btn {
@@ -233,33 +255,57 @@
   </header>
 
   <section class="hero">
-    <div class="hero-grid">
-      <div class="hero-verdict">
-        <p class="eyebrow">Los Angeles → Santa Barbara · 91 mi · 2 stops</p>
-        <h1 class="hero-lead">You'll arrive at</h1>
-        <div class="bignum">62%</div>
+    <p class="kicker">Every EV planner finds you a charger.</p>
+    <h1>This one takes a detour to dodge <em>a left turn</em>.</h1>
 
-        <div class="gauge">
-          <div class="gauge-track" role="img" aria-label="Battery gauge showing arrival at 62 percent, well clear of the 15 percent reserve floor">
-            <div class="gauge-fill"></div>
-            <div class="gauge-reserve"></div>
-          </div>
-          <div class="gauge-scale"><span>0%</span><b>reserve 15%</b><span>100%</span></div>
-        </div>
+    <p class="hero-sub">
+      Leeway plans California road trips around the battery your car actually
+      has today. Then it spends a budget you set, in minutes, on the hazards
+      other planners route you straight through: the
+      <strong>unsignaled crossing of a four-lane road</strong>, the
+      <strong>left turn with no light</strong>, the
+      <strong>rail line</strong>, the <strong>live Caltrans closure</strong>.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="../">Plan a trip</a>
+      <a class="btn btn-ghost" href="https://github.com/lyhjeremy/leeway">Read the code</a>
+    </div>
+
+    <figure class="hero-proof">
+      <img class="shot" src="safety-detour.jpg" width="1600" height="870"
+        alt="A two-minute neighborhood route drawn as a rectangle around a block, avoiding a crossing of West Olympic Boulevard, with the verdict card reading rerouted around 1 flagged spot for about +1 min." />
+      <figcaption>
+        A two-minute drive across the neighborhood. Leeway spent an extra minute
+        of it going around the block rather than crossing West Olympic Boulevard
+        with no signal, and said so.
+      </figcaption>
+    </figure>
+
+    <div class="claims">
+      <div class="claim">
+        <h3>It reroutes around dangerous crossings</h3>
+        <p>Four hazard types, each its own switch, with a detour budget in
+        minutes. At +5 it avoids anything it can dodge for five minutes or less
+        and warns you about the rest.</p>
       </div>
-
-      <div>
-        <p class="hero-sub">
-          That number is the whole product. Before Leeway put a single charging
-          stop in this plan, it <strong>checked each one with a real routing
-          call</strong>. The range math already accounts for the climb, the
-          temperature, the headwind, and the passengers and luggage you told it
-          about.
-        </p>
-        <div class="cta-row">
-          <a class="btn btn-primary" href="../">Plan a trip</a>
-          <a class="btn btn-ghost" href="https://github.com/lyhjeremy/leeway">Read the code</a>
-        </div>
+      <div class="claim">
+        <h3>It plans for a five-year-old battery</h3>
+        <p>You give it the range your car really shows at 100%. The Model 3 this
+        was built around left the factory rated at 263 miles and now does 205.
+        Planning from 263 is how people get stranded.</p>
+      </div>
+      <div class="claim">
+        <h3>It grades itself and shows the marks</h3>
+        <p>Tell it what the battery really read when you arrived. It keeps a
+        running record of predicted against actual, with no favorable rounding,
+        and tunes future plans toward your car.</p>
+      </div>
+      <div class="claim">
+        <h3>It takes requests in plain English</h3>
+        <p>"Add an In-N-Out after an hour of driving." Every result is priced by
+        the detour it truly costs, routed and measured rather than guessed from
+        a straight line.</p>
       </div>
     </div>
   </section>
@@ -311,12 +357,22 @@
   <section class="stop stop--charge">
     <p class="eyebrow">↓ a real plan</p>
     <h2>Every stop checked before the plan says yes</h2>
-    <p>
-      Los Angeles to Santa Barbara by way of the Getty. Leeway comes back with
-      <strong>Makeable with your reserve</strong>, an arrival of
-      <strong>62%</strong> with <strong>96 miles to spare</strong>, and the
-      arithmetic behind it: 91 miles, two stops, 2 h 49 min including about 48
-      minutes plugged in, with range adjusted for 84°F and calm wind.
+
+    <p class="verdict-lead">Los Angeles to Santa Barbara, you'll arrive at</p>
+    <div class="bignum">62%</div>
+    <div class="gauge">
+      <div class="gauge-track" role="img" aria-label="Battery gauge showing arrival at 62 percent, well clear of the 15 percent reserve floor">
+        <div class="gauge-fill"></div>
+        <div class="gauge-reserve"></div>
+      </div>
+      <div class="gauge-scale"><span>0%</span><b>reserve 15%</b><span>100%</span></div>
+    </div>
+
+    <p class="after-gauge">
+      That is a 91-mile run by way of the Getty, and the arithmetic behind it is
+      on the card: two stops, 2 h 49 min including about 48 minutes plugged in,
+      <strong>96 miles to spare</strong>, range adjusted for 84°F and calm wind.
+      The verdict line reads <strong>Makeable with your reserve</strong>.
     </p>
     <p>
       Under that sit the warnings it found on this particular route. A
@@ -335,7 +391,7 @@
   <!-- 4 -->
   <section class="stop stop--flag">
     <p class="eyebrow">↓ safety</p>
-    <h2>Warnings it will act on for you</h2>
+    <h2>The part no charger map does</h2>
     <p>
       Four hazards, each with its own switch: <strong>left turns across big
       roads</strong>, <strong>unsignaled crossings of 4+ lane roads</strong>,
@@ -346,24 +402,26 @@
       leaves alone.
     </p>
     <p>
-      That <strong>+5 is the default</strong>. Someone who never opens the
-      options still gets steered around the hazards that are cheap to avoid.
+      That <strong>+5 is the default</strong>, not flag-only. Someone who never
+      opens the options still gets steered around the hazards that are cheap
+      to avoid.
     </p>
     <p>
-      The clearest example is also the smallest. This two-minute hop would
-      normally cross West Olympic Boulevard with no signal. With the switch on,
-      the route goes the long way around the block and says so:
-      <strong>rerouted around 1 flagged spot for about +1 min</strong>.
+      Nothing here is guessed at. Traffic signals, lane counts
+      and rail level crossings come from OpenStreetMap, closures from the
+      Caltrans feed, and the turn geometry is measured off the route itself. The
+      detour at the top of this page came from exactly that.
+    </p>
+    <p>
+      Two limits worth stating plainly. Leeway warns about steep descents,
+      twisty sections, sun glare and strong wind without routing around them.
+      And when the OpenStreetMap servers are struggling, a hazard check gives up
+      rather than delaying your plan, so a flag can go missing on a bad day.
     </p>
     <figure>
       <img class="shot shot--narrow" src="tab-safety.jpg" width="1000" height="1341" loading="lazy"
         alt="The Safety tab showing a hazard detour budget of Flag only, +5, +10 or +20 minutes, and four toggles for left turns, 4+ lane crossings, rail crossings and Caltrans closures." />
       <figcaption>Flag only, or spend 5, 10, or 20 minutes avoiding it.</figcaption>
-    </figure>
-    <figure>
-      <img class="shot" src="safety-detour.jpg" width="1600" height="870" loading="lazy"
-        alt="A short route that detours in a rectangle around a block rather than crossing West Olympic Boulevard without a traffic signal." />
-      <figcaption>The detour in practice: around the block, not across the boulevard.</figcaption>
     </figure>
     <div class="voice">
       <p><q>For each hazard below: ON = route around it when the detour adds 5 minutes

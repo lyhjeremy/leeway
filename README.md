@@ -2,13 +2,36 @@
 
 *The second opinion before you leave.*
 
-A trip planner for EVs whose batteries have lost range with age, built
-around a real 2021 Tesla Model 3 Standard Range Plus (205 mi at 100%, down
-from 263 new). You tell it your car's actual range, it tells you what will
-really be left in the battery when you arrive, with charging stops it has
-verified against real routing data rather than guessed at. Full product
-plan: `../LEEWAY_PRODUCT_PLAN.md` (one level up, not in this repo — this
-repo is the codebase only).
+Every EV planner finds you a charger. This one will also spend a minute of
+your day driving around the block so you don't have to cross four lanes of
+traffic without a light.
+
+Leeway plans California road trips around the battery your car actually has
+today, then spends a detour budget you set, in minutes, on hazards other
+planners route you straight through: unprotected left turns, unsignaled
+crossings of 4+ lane roads, rail level crossings, and live Caltrans
+closures. Afterwards it asks how the trip really went, and keeps the record
+of how wrong it was.
+
+Built around a real 2021 Tesla Model 3 Standard Range Plus: 205 mi at 100%,
+down from 263 new. Full product plan: `../LEEWAY_PRODUCT_PLAN.md` (one level
+up, not in this repo — this repo is the codebase only).
+
+### The four that aren't standard
+
+1. **Hazard-aware rerouting.** Four detectors (unprotected left, unsignaled
+   4+ lane crossing, rail crossing, Caltrans closure) each with its own
+   switch, behind a detour budget of 5, 10, or 20 minutes. Anything
+   avoidable inside the budget gets routed around; the rest is flagged.
+   Detection is real OSM geometry plus the Caltrans feed, never a guess.
+2. **Degradation as the starting point.** The plan begins from the range
+   your car shows at 100% today, not the factory number.
+3. **A self-grading record.** Log the arrival percentage you actually saw.
+   Leeway keeps predicted against actual with no favorable rounding, and
+   after three substantial trips starts correcting toward your car, biased
+   so an optimistic correction can never make a plan bolder than stock.
+4. **Plain-language stops.** "Add an In-N-Out after an hour of driving."
+   Each candidate is priced by a real routed detour, not a straight line.
 
 **Live:** https://lyhjeremy.github.io/leeway/ ·
 **Product overview:** https://lyhjeremy.github.io/leeway/overview/ ·
@@ -16,6 +39,12 @@ backend health at `https://leeway-api.onrender.com/api/health`.
 
 ## What it does
 
+- Reroutes around point hazards, each detector its own switch: unprotected
+  left turns, unsignaled crossings of 4+ lane roads, rail crossings, and
+  active Caltrans lane closures. A detour budget (5, 10, or 20 minutes; 5 is
+  the default) decides what gets avoided and what only gets flagged. It also
+  warns without rerouting on steep descents, twisty sections, sun glare, and
+  strong wind.
 - Plans charging stops with elevation-aware range math (a proportional
   slice of trip-wide climb data called I-5's Grapevine "reachable" when a
   real per-leg check proved it wasn't — every candidate stop is verified
@@ -27,19 +56,14 @@ backend health at `https://leeway-api.onrender.com/api/health`.
   closures filter to what will be active on the road.
 - Learns your car: logged predicted-vs-actual trips feed a recency-weighted
   correction into future estimates once 3+ substantial trips exist. The
-  correction is biased to the safe side — a hungrier-than-predicted car
-  gets the full adjustment, a better-than-predicted one only half, never
-  below 0.9 — and the plan says out loud when it's active.
+  correction is biased to the safe side. A hungrier-than-predicted car gets
+  the full adjustment, a better-than-predicted one only half, never below
+  0.9, and the plan says out loud when it's active.
 - Charging preferences: fewest stops / fastest trip / best amenities,
   Superchargers-only or non-Tesla-only, specific networks (ChargePoint,
   Electrify America, EVgo, Tesla, Blink), a minimum charger speed, and a
   break rhythm ("stop at least every 2h") that plans stops for the driver
   rather than the battery when that binds first.
-- Safety flags, each its own switch: unprotected left turns, unsignaled
-  crossings of 4+ lane roads, rail crossings, and active Caltrans lane
-  closures (all from real data), plus steep descents, twisty sections,
-  sun glare, and strong-wind days. A detour budget (5, 10, or 20 minutes - 5 is the default)
-  reroutes around point hazards when the cost fits.
 - A route editor in the Google style: up to three stops between start and
   destination, searchable, drag-to-reorder in any direction, with route
   alternatives (I-5 vs 101 vs 99) to compare and pick.
