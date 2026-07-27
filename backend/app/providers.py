@@ -23,6 +23,13 @@ ORS_BASE = "https://api.openrouteservice.org"
 OCM_BASE = "https://api.openchargemap.io/v3"
 METEO_BASE = "https://api.open-meteo.com/v1"
 OVERPASS_BASE = "https://overpass-api.de/api/interpreter"
+# Failover order for the shared community Overpass servers - the primary
+# 504s or refuses connections under load with some regularity (observed
+# repeatedly in production). kumi.systems is the big full-planet mirror.
+OVERPASS_INSTANCES = [
+    OVERPASS_BASE,
+    "https://overpass.kumi.systems/api/interpreter",
+]
 
 # California bounding box - biases geocoding results since this product is
 # CA-only for now, per the product plan.
@@ -535,26 +542,40 @@ async def caltrans_closures() -> list[dict]:
 
 
 async def overpass_raw(query: str) -> dict:
-    """Run any Overpass QL query with the retry loop this flaky public
-    instance needs (see search_overpass's docstring for the evidence).
-    Shared by the POI search and the safety-flag crossing checks. Real
-    responses are cached; the retries-exhausted empty fallback is NOT -
-    it's a transient outage, not an answer."""
+    """Run any Overpass QL query with retries ACROSS instances - the shared
+    community servers fail in two distinct ways, both seen in production:
+    retryable HTTP statuses (406/429/503/504) and outright connection
+    failures ("all connection attempts failed"), which the old loop didn't
+    catch at all. Each attempt rotates to the next instance. Real responses
+    are cached; exhausting every attempt RAISES rather than returning an
+    empty result - "couldn't ask" must never masquerade as "nothing there"
+    (callers that prefer degrading, like the safety flags, catch it)."""
     cached = _overpass_cache.get(query)
     if cached is not None:
         return cached
     headers = {"User-Agent": "Leeway-EV-Trip-Planner/0.1 (github.com/lyhjeremy/leeway)"}
+    last_error: Exception | None = None
     async with httpx.AsyncClient(timeout=30) as client:
         for attempt in range(4):
-            resp = await client.post(OVERPASS_BASE, data={"data": query}, headers=headers)
+            url = OVERPASS_INSTANCES[attempt % len(OVERPASS_INSTANCES)]
+            try:
+                resp = await client.post(url, data={"data": query}, headers=headers)
+            except httpx.TransportError as e:
+                # DNS/connect/read failure - move straight to the mirror
+                last_error = e
+                await asyncio.sleep(1 + attempt)
+                continue
             if resp.status_code in (406, 429, 503, 504) and attempt < 3:
+                last_error = httpx.HTTPStatusError(
+                    f"overpass {resp.status_code}", request=resp.request, response=resp,
+                )
                 await asyncio.sleep(2 * (attempt + 1))
                 continue
             resp.raise_for_status()
             result = resp.json()
             _overpass_cache.set(query, result)
             return result
-    return {"elements": []}
+    raise last_error if last_error is not None else httpx.ConnectError("overpass unavailable")
 
 
 async def search_overpass(bbox: tuple[float, float, float, float], tag_filters: list[tuple[str, str]], max_results: int = 60) -> list[dict]:

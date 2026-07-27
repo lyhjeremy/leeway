@@ -122,6 +122,59 @@ def test_identical_overpass_queries_hit_network_once(counting_network):
     assert CountingClient.requests == 2
 
 
+class FailoverClient:
+    """Primary Overpass refuses connections; the kumi mirror answers."""
+
+    calls: list = []
+
+    def __init__(self, *a, **k):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, url, **kw):
+        FailoverClient.calls.append(url)
+        if "overpass-api.de" in url:
+            raise httpx.ConnectError("all connection attempts failed")
+        return httpx.Response(200, json={"elements": [{"id": 1}]}, request=httpx.Request("POST", url))
+
+
+class AllDownClient(FailoverClient):
+    async def post(self, url, **kw):
+        FailoverClient.calls.append(url)
+        raise httpx.ConnectError("all connection attempts failed")
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    async def instant(_s):
+        return None
+    monkeypatch.setattr(providers.asyncio, "sleep", instant)
+
+
+def test_overpass_fails_over_to_the_mirror(counting_network, no_sleep, monkeypatch):
+    monkeypatch.setattr(providers.httpx, "AsyncClient", FailoverClient)
+    FailoverClient.calls = []
+    result = run(providers.overpass_raw("[out:json];node(42);out;"))
+    assert result == {"elements": [{"id": 1}]}
+    assert "overpass-api.de" in FailoverClient.calls[0]
+    assert "kumi.systems" in FailoverClient.calls[1]
+
+
+def test_overpass_all_down_raises_never_pretends_empty(counting_network, no_sleep, monkeypatch):
+    """'Couldn't ask' must never masquerade as 'nothing there' - an empty
+    result here would tell voice search there are no cafes in LA."""
+    monkeypatch.setattr(providers.httpx, "AsyncClient", AllDownClient)
+    FailoverClient.calls = []
+    with pytest.raises(httpx.HTTPError):
+        run(providers.overpass_raw("[out:json];node(43);out;"))
+    assert len(FailoverClient.calls) == 4  # every attempt across both instances
+
+
 def test_identical_station_searches_hit_network_once(counting_network):
     a = run(providers.find_charging_stations(35.0, -119.0, radius_mi=15))
     b = run(providers.find_charging_stations(35.0, -119.0, radius_mi=15))

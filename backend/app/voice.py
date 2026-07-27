@@ -15,6 +15,8 @@ POI results with a real detour check. Three real, verified pieces:
 import json
 import re
 
+import httpx
+
 from . import gemini, providers
 from .geo import cumulative_distances_mi, nearest_route_point
 
@@ -96,7 +98,16 @@ async def find_stops(query_text: str, origin: tuple[float, float], destination: 
     mid_lon, mid_lat = coords[len(coords) // 2]
     bbox = (mid_lat - SEARCH_RADIUS_DEG, mid_lon - SEARCH_RADIUS_DEG, mid_lat + SEARCH_RADIUS_DEG, mid_lon + SEARCH_RADIUS_DEG)
 
-    pois = await providers.search_overpass(bbox, CATEGORY_TAGS[parsed["category"]])
+    try:
+        pois = await providers.search_overpass(bbox, CATEGORY_TAGS[parsed["category"]])
+    except httpx.HTTPError:
+        # Both community Overpass instances down/overloaded - say what
+        # actually happened instead of a raw "connection attempts failed".
+        raise VoiceSearchError(
+            "The map data source behind stop search (OpenStreetMap's Overpass) is "
+            "overloaded right now - the trip plan itself is unaffected. Try the "
+            "search again in a minute."
+        )
 
     if parsed["brand"]:
         brand_lower = parsed["brand"].lower()

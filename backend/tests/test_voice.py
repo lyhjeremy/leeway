@@ -19,6 +19,24 @@ def canned_gemini(monkeypatch):
     monkeypatch.setattr(gemini, "gemini_generate_json", fake_generate)
 
 
+def test_overpass_outage_reports_honestly(world, canned_gemini, monkeypatch):
+    """Both Overpass instances down surfaced as a raw 'all connection
+    attempts failed' 502 to the user - it must say what happened and that
+    the plan itself is fine."""
+    import httpx
+
+    from app import providers
+
+    async def down(*a, **k):
+        raise httpx.ConnectError("all connection attempts failed")
+
+    monkeypatch.setattr(providers, "search_overpass", down)
+    with pytest.raises(voice.VoiceSearchError) as e:
+        run(voice.find_stops("starbucks along the way", LA, DEST))
+    assert "overloaded" in str(e.value)
+    assert "unaffected" in str(e.value)
+
+
 def test_results_carry_address_and_detour_distance(world, canned_gemini):
     mid_lat = (LA[0] + DEST[0]) / 2
     world.overpass_result = {
