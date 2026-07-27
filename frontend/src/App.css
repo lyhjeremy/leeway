@@ -685,6 +685,20 @@
   left: 21px;
 }
 
+/* With the promoted controls the left panel can outgrow short viewports and
+   scroll - the one button that matters stays pinned to its bottom edge,
+   masking whatever scrolls beneath it. */
+.plan-cta {
+  position: sticky;
+  bottom: -18px;
+  margin: 0 -18px -18px;
+  padding: 10px 18px 18px;
+  background: var(--card);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+}
+
 .plan-btn {
   background: var(--ink);
   color: var(--ink-contrast);
@@ -933,6 +947,12 @@
   color: var(--ink2);
   background: var(--card);
   cursor: pointer;
+}
+
+/* Suggested trips padding out the recents row - dashed so a suggestion
+   never masquerades as your real history. */
+.chip-suggest {
+  border-style: dashed;
 }
 
 .chip:hover {
@@ -1378,6 +1398,14 @@
     right: 16px;
     width: auto;
     min-width: 0;
+  }
+
+  /* Stacked layout scrolls the whole page, not the panel - a sticky CTA
+     would hover over the results below it. */
+  .plan-cta {
+    position: static;
+    margin: 0;
+    padding: 0;
   }
 
   /* The voice bar owns the map's top edge on mobile - the chip row moves

@@ -44,6 +44,24 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.c
 
 export const MI_TO_KM = 1.609344
 
+// Pads the recent-trips row to three chips while real history is short.
+// Clearly marked "try:" - a suggestion pretending to be your history would
+// be a small lie, and this product doesn't do those.
+const SUGGESTED_TRIPS: RecentTrip[] = [
+  {
+    origin: { label: 'Los Angeles, CA', lat: 34.0522, lon: -118.2437 },
+    destination: { label: 'San Francisco, CA', lat: 37.7749, lon: -122.4194 },
+  },
+  {
+    origin: { label: 'San Diego, CA', lat: 32.7157, lon: -117.1611 },
+    destination: { label: 'Santa Barbara, CA', lat: 34.4208, lon: -119.6982 },
+  },
+  {
+    origin: { label: 'Sacramento, CA', lat: 38.5816, lon: -121.4944 },
+    destination: { label: 'South Lake Tahoe, CA', lat: 38.9399, lon: -119.9772 },
+  },
+]
+
 const STOP_MODES: { value: StopMode; label: string }[] = [
   { value: 'fewest_stops', label: 'Fewest stops' },
   { value: 'fastest_trip', label: 'Fastest trip' },
@@ -818,11 +836,20 @@ function Planner() {
 
   const rangeDisplay = Math.round(units === 'km' ? fullRangeMi * MI_TO_KM : fullRangeMi)
 
+  // Always three trip chips: real history first, "try:" suggestions filling
+  // the rest so the row never sits mostly empty.
+  const shownRecents = recentTrips.slice(0, 3)
+  const suggestedTrips = SUGGESTED_TRIPS.filter(
+    (s) =>
+      !shownRecents.some(
+        (r) => r.origin.label === s.origin.label && r.destination.label === s.destination.label,
+      ),
+  ).slice(0, Math.max(0, 3 - shownRecents.length))
+
   // Tells you the collapsed options section is hiding something you set.
+  // Stop mode, charger filter, and safety mode are always visible now, so
+  // they don't count as hidden.
   const changedOptions = [
-    stopMode !== 'fewest_stops',
-    chargerFilter !== 'all',
-    safetyMode !== 'flag_only',
     avoidTolls,
     avoidHighways,
     waypoints.some(Boolean),
@@ -917,18 +944,21 @@ function Planner() {
             </button>
           )}
 
-          {recentTrips.length > 0 && (
-            <div>
-              <div className="row-label">Recent trips</div>
-              <div className="recents">
-                {recentTrips.map((t, i) => (
-                  <button key={i} className="chip" onClick={() => pickRecentTrip(t)}>
-                    {t.origin.label.split(',')[0]} → {t.destination.label.split(',')[0]}
-                  </button>
-                ))}
-              </div>
+          <div>
+            <div className="row-label">{shownRecents.length > 0 ? 'Recent trips' : 'Try a trip'}</div>
+            <div className="recents">
+              {shownRecents.map((t, i) => (
+                <button key={i} className="chip" onClick={() => pickRecentTrip(t)}>
+                  {t.origin.label.split(',')[0]} → {t.destination.label.split(',')[0]}
+                </button>
+              ))}
+              {suggestedTrips.map((t, i) => (
+                <button key={`s${i}`} className="chip chip-suggest" onClick={() => pickRecentTrip(t)}>
+                  try: {t.origin.label.split(',')[0]} → {t.destination.label.split(',')[0]}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
 
           <div>
             <div className="row-label">Battery right now</div>
@@ -966,16 +996,6 @@ function Planner() {
           </div>
 
           <div>
-            <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setShowOptions((v) => !v)}>
-              {showOptions
-                ? 'fewer options ▾'
-                : changedOptions > 0
-                  ? `more options (${changedOptions} set) ▸`
-                  : 'more options ▸'}
-            </button>
-            {showOptions && (
-              <div className="options">
-          <div>
             <div className="row-label">Charging stops</div>
             <div className="seg">
               {STOP_MODES.map((m) => (
@@ -995,6 +1015,36 @@ function Planner() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div>
+            <div className="row-label">Hazard detours</div>
+            <div className="seg">
+              {SAFETY_MODES.map((m) => (
+                <button key={m.value} className={m.value === safetyMode ? 'on' : ''} onClick={() => setSafetyMode(m.value)}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <div className="seg-hint">
+              {safetyMode === 'flag_only'
+                ? 'Checked hazards get flagged on the map, route unchanged.'
+                : `Reroutes around checked hazards when the detour adds ${safetyMode === 'avoid_quick' ? '3' : '10'} minutes or less.`}
+            </div>
+          </div>
+
+          <div>
+            <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setShowOptions((v) => !v)}>
+              {showOptions
+                ? 'fewer options ▾'
+                : changedOptions > 0
+                  ? `more options (${changedOptions} set) ▸`
+                  : 'more options ▸'}
+            </button>
+            {showOptions && (
+              <div className="options">
+          <div>
+            <div className="row-label">Charger networks</div>
             <div className="recents" style={{ marginTop: 8 }}>
               {Object.keys(networks).map((n) => (
                 <button
@@ -1022,19 +1072,7 @@ function Planner() {
           </div>
 
           <div>
-            <div className="row-label">Hazard detours</div>
-            <div className="seg">
-              {SAFETY_MODES.map((m) => (
-                <button key={m.value} className={m.value === safetyMode ? 'on' : ''} onClick={() => setSafetyMode(m.value)}>
-                  {m.label}
-                </button>
-              ))}
-            </div>
-            <div className="seg-hint">
-              {safetyMode === 'flag_only'
-                ? 'Checked hazards get flagged on the map, route unchanged.'
-                : `Reroutes around checked hazards when the detour adds ${safetyMode === 'avoid_quick' ? '3' : '10'} minutes or less.`}
-            </div>
+            <div className="row-label">Hazards to check</div>
             <div className="toggles" style={{ marginTop: 10 }}>
               {(
                 [
@@ -1251,9 +1289,11 @@ function Planner() {
             )}
           </div>
 
-          <button className="plan-btn" onClick={handlePlan} disabled={loading}>
-            {loading ? 'Planning…' : 'Plan this trip'}
-          </button>
+          <div className="plan-cta">
+            <button className="plan-btn" onClick={handlePlan} disabled={loading}>
+              {loading ? 'Planning…' : 'Plan this trip'}
+            </button>
+          </div>
 
           {error && <div className="error-box">{error}</div>}
         </aside>
