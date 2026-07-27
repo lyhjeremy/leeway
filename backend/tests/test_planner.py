@@ -252,6 +252,12 @@ def test_short_trip_hazard_still_gets_the_detour_attempt(world):
     # note stayed empty because the hazard was never considered avoidable.
     assert avoided["note"] and "Rerouted around 1 flagged spot" in avoided["note"]
 
+    # All three budget tiers reach the avoidance pass - including the
+    # default (avoid_quick, 5 min) and the widest (avoid_max, 20 min)
+    for mode in ("avoid_quick", "avoid_max"):
+        p = run(planner.plan_trip(origin, destination, **CAR, safety_mode=mode))
+        assert p["note"] and "Rerouted around" in p["note"], mode
+
 
 def test_localize_km_and_c():
     plan = {

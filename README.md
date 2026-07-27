@@ -37,7 +37,7 @@ repo is the codebase only).
 - Safety flags, each its own switch: unprotected left turns, unsignaled
   crossings of 4+ lane roads, rail crossings, and active Caltrans lane
   closures (all from real data), plus steep descents, twisty sections,
-  sun glare, and strong-wind days. A detour budget (3 or 10 minutes)
+  sun glare, and strong-wind days. A detour budget (5, 10, or 20 minutes - 5 is the default)
   reroutes around point hazards when the cost fits.
 - A route editor in the Google style: up to three stops between start and
   destination, searchable, drag-to-reorder in any direction, with route

@@ -47,7 +47,7 @@ export interface RouteAlt {
 export type Units = 'mi' | 'km'
 
 export type StopMode = 'fewest_stops' | 'fastest_trip' | 'best_amenities'
-export type SafetyMode = 'flag_only' | 'avoid_quick' | 'avoid_hard'
+export type SafetyMode = 'flag_only' | 'avoid_quick' | 'avoid_hard' | 'avoid_max'
 export type ChargerFilter = 'all' | 'tesla_only' | 'non_tesla'
 
 export interface SafetyFlag {

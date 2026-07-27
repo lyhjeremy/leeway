@@ -57,10 +57,11 @@ DEDUPE_RADIUS_MI = 0.3
 
 # Safety-avoidance time budgets: how many extra minutes a reroute around
 # flagged spots (unprotected lefts, rail crossings) is allowed to cost
-# before the direct route wins and the spots stay as warnings. Sized from
-# the actual user requirement: "1-2 min added is fine, 5+ is too much" for
-# the middle setting, with a genuinely-cautious tier above it.
-AVOID_BUDGET_MIN = {"avoid_quick": 3.0, "avoid_hard": 10.0}
+# before the direct route wins and the spots stay as warnings. Three tiers
+# per Jeremy's request (2026-07-27): 5 is the default everywhere - someone
+# who never touches the options still gets cheap detours - 10 and 20 for
+# progressively more cautious drivers.
+AVOID_BUDGET_MIN = {"avoid_quick": 5.0, "avoid_hard": 10.0, "avoid_max": 20.0}
 
 # A hazard this close to a leg endpoint (origin, destination, or a chosen
 # charger) is usually the entrance to that place itself - the Castaic
@@ -201,7 +202,7 @@ async def plan_trip(
     avoid_highways: bool = False,
     excluded_station_ids: tuple = (),
     waypoints: tuple = (),  # dicts: {lat, lon, title, hidden} - visited in order, battery passes through
-    safety_mode: str = "flag_only",  # flag_only | avoid_quick | avoid_hard
+    safety_mode: str = "avoid_quick",  # flag_only | avoid_quick (5min) | avoid_hard (10) | avoid_max (20)
     charger_filter: str = "all",  # all | tesla_only | non_tesla
     arrival_target_pct: float = 0.0,  # arrive at the final destination with at least this much
     passengers: int = 0,  # beyond the driver

@@ -14,7 +14,7 @@ from .voice import VoiceSearchError, find_stops
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.16.5"
+VERSION = "0.17.0"
 
 app = FastAPI(title="Leeway API")
 
@@ -84,7 +84,7 @@ class PlanRequest(BaseModel):
     avoid_highways: bool = False
     excluded_station_ids: list[int] = []  # "skip this stop" - re-plan without these OCM station IDs
     waypoints: list[Waypoint] = Field(default=[], max_length=5)  # visited in order, battery passes through
-    safety_mode: Literal["flag_only", "avoid_quick", "avoid_hard"] = "flag_only"
+    safety_mode: Literal["flag_only", "avoid_quick", "avoid_hard", "avoid_max"] = "avoid_quick"
     charger_filter: Literal["all", "tesla_only", "non_tesla"] = "all"
     arrival_target_pct: float = Field(default=0.0, ge=0, le=95)  # arrive with at least this much
     passengers: int = Field(default=0, ge=0, le=6)  # beyond the driver

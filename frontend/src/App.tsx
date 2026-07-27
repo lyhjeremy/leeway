@@ -77,9 +77,16 @@ const CHARGER_FILTERS: { value: ChargerFilter; label: string }[] = [
 
 const SAFETY_MODES: { value: SafetyMode; label: string }[] = [
   { value: 'flag_only', label: 'Flag only' },
-  { value: 'avoid_quick', label: '+3 min max' },
-  { value: 'avoid_hard', label: '+10 min max' },
+  { value: 'avoid_quick', label: '+5 min' },
+  { value: 'avoid_hard', label: '+10 min' },
+  { value: 'avoid_max', label: '+20 min' },
 ]
+
+const SAFETY_BUDGET_LABEL: Record<string, string> = {
+  avoid_quick: '5',
+  avoid_hard: '10',
+  avoid_max: '20',
+}
 
 // First-visit demo trip - shown pre-filled so the value is visible before
 // anyone types anything. Real coordinates (Culver City -> SF Mission), not
@@ -160,7 +167,9 @@ function Planner() {
   const [fullRangeMi, setFullRangeMi] = useState<number>(() => loadFullRangeMi() ?? 205)
   const [stopMode, setStopMode] = useState<StopMode>('fewest_stops')
   const [chargerFilter, setChargerFilter] = useState<ChargerFilter>('all')
-  const [safetyMode, setSafetyMode] = useState<SafetyMode>('flag_only')
+  // Default is the +5 min detour budget, not flag-only: someone who never
+  // opens the options still gets routed around cheap-to-avoid hazards.
+  const [safetyMode, setSafetyMode] = useState<SafetyMode>('avoid_quick')
   const [hazardTypes, setHazardTypes] = useState<Record<string, boolean>>({
     unprotected_left: true,
     wide_crossing: true,
@@ -882,7 +891,7 @@ function Planner() {
   // Tells you the collapsed options section is hiding something you set.
   // Stop mode and charger filter are always visible, so they don't count.
   const changedOptions = [
-    safetyMode !== 'flag_only',
+    safetyMode !== 'avoid_quick',
     avoidTolls,
     avoidHighways,
     waypoints.some(Boolean),
@@ -1073,7 +1082,7 @@ function Planner() {
               {safetyMode === 'flag_only'
                 ? 'For each hazard below: ON = warn about it on the map (the route itself never changes in this mode). OFF = don’t check for it.'
                 : `For each hazard below: ON = route around it when the detour adds ${
-                    safetyMode === 'avoid_quick' ? '3' : '10'
+                    SAFETY_BUDGET_LABEL[safetyMode]
                   } minutes or less, otherwise warn about it. OFF = don’t check for it.`}
             </div>
             <div className="toggles" style={{ marginTop: 10 }}>
@@ -1368,7 +1377,10 @@ function Planner() {
               <span className="api-chip api-chip--down">can't reach the planner - it may be waking up</span>
             )}
           </div>
-          {plan && origin && destination && (
+          {/* Visible from the first paint, not gated on having planned - a
+              first-time visitor should see the stop-search bar exists. It
+              only needs endpoints, which the sample trip pre-fills. */}
+          {origin && destination && (
             <VoiceBar origin={origin} destination={destination} units={units} onAddStop={handleAddVoiceStop} />
           )}
         </div>
