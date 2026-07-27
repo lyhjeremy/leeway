@@ -238,6 +238,13 @@
   padding-top: 0;
 }
 
+/* The route-list box draws its own full border - the section-rhythm
+   padding above would land INSIDE the rounded box, opening a 13px gap
+   above the first row that made it read as a taller row. */
+.panel-left > .field-group {
+  padding-top: 0;
+}
+
 .map-wrap {
   position: absolute;
   inset: 0;
