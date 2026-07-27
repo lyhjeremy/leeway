@@ -1,10 +1,13 @@
 import { useRef, useState } from 'react'
 import { voiceSearch } from './api'
-import type { GeocodeResult, VoiceSearchResponse } from './types'
+import type { GeocodeResult, Units, VoiceSearchResponse } from './types'
+
+const MI_TO_KM = 1.609344
 
 interface Props {
   origin: GeocodeResult
   destination: GeocodeResult
+  units: Units
   onAddStop: (lat: number, lon: number, title: string) => void
 }
 
@@ -12,7 +15,11 @@ interface Props {
 // on a phone mounted in a car (Stage 4 comes after Stage 3's mobile work on
 // purpose), where speaking is genuinely faster than typing - at a laptop,
 // typing would win, which is why this wasn't built earlier.
-export default function VoiceBar({ origin, destination, onAddStop }: Props) {
+export default function VoiceBar({ origin, destination, units, onAddStop }: Props) {
+  const dist = (mi: number) => {
+    const v = units === 'km' ? mi * MI_TO_KM : mi
+    return `${v < 10 ? Math.round(v * 10) / 10 : Math.round(v)} ${units}`
+  }
   const [text, setText] = useState('')
   const [listening, setListening] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -96,9 +103,11 @@ export default function VoiceBar({ origin, destination, onAddStop }: Props) {
             <div className="voice-result-row" key={i}>
               <div>
                 <div className="voice-result-name">{r.name}</div>
+                {r.address && <div className="voice-result-sub">{r.address}</div>}
                 <div className="voice-result-sub">
                   {r.drive_through === 'yes' ? 'Drive-through · ' : ''}
-                  {r.detour_min >= 0 ? `+${r.detour_min} min` : `${r.detour_min} min`}
+                  adds {r.detour_min >= 0 ? `${r.detour_min} min` : `${r.detour_min} min`}
+                  {r.detour_mi != null && ` · ${dist(r.detour_mi)}`}
                   {!r.within_budget && ' (over your ask)'}
                 </div>
               </div>

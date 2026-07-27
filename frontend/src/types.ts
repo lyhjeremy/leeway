@@ -73,9 +73,11 @@ export interface VoiceResult {
   brand: string | null
   lat: number
   lon: number
+  address?: string | null
   drive_through: string | null
   opening_hours: string | null
   detour_min: number
+  detour_mi?: number
   within_budget: boolean
 }
 

@@ -50,6 +50,15 @@ class VoiceSearchError(Exception):
     pass
 
 
+def _poi_address(tags: dict) -> str | None:
+    """Street address from OSM addr:* tags - the thing that tells two
+    same-brand results apart. Honest None when OSM has no address for the
+    POI rather than a made-up one."""
+    street_part = " ".join(x for x in [tags.get("addr:housenumber"), tags.get("addr:street")] if x)
+    parts = [p for p in [street_part, tags.get("addr:city")] if p]
+    return ", ".join(parts) or None
+
+
 async def parse_voice_query(text: str) -> dict:
     prompt = PARSE_PROMPT.format(categories=list(CATEGORY_TAGS.keys()), query=text)
     raw = await gemini.gemini_generate_json(prompt, max_tokens=200)
@@ -116,14 +125,17 @@ async def find_stops(query_text: str, origin: tuple[float, float], destination: 
         leg1 = await providers.directions(origin, (p["lat"], p["lon"]))
         leg2 = await providers.directions((p["lat"], p["lon"]), destination)
         detour_min = round((leg1["duration_min"] + leg2["duration_min"]) - direct_duration_min)
+        detour_mi = max(0.0, round((leg1["distance_mi"] + leg2["distance_mi"]) - route["distance_mi"], 1))
         verified.append({
             "name": p["name"],
             "brand": p["brand"],
             "lat": p["lat"],
             "lon": p["lon"],
+            "address": _poi_address(p.get("tags") or {}),
             "drive_through": p["drive_through"],
             "opening_hours": p["opening_hours"],
             "detour_min": detour_min,
+            "detour_mi": detour_mi,
             "within_budget": detour_min <= parsed["max_detour_min"],
         })
 

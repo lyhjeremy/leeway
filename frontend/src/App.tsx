@@ -1369,7 +1369,7 @@ function Planner() {
             )}
           </div>
           {plan && origin && destination && (
-            <VoiceBar origin={origin} destination={destination} onAddStop={handleAddVoiceStop} />
+            <VoiceBar origin={origin} destination={destination} units={units} onAddStop={handleAddVoiceStop} />
           )}
         </div>
 
