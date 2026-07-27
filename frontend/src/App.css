@@ -253,8 +253,11 @@
   position: absolute;
   top: 16px;
   left: 400px;
-  width: min(420px, calc(100vw - 830px));
-  min-width: 220px;
+  /* Stretch to 16px shy of the chip row / results card (which sit 400px
+     from the right edge: 16px margin + 384px width) - a short bar floating
+     in a wide gap left the top of the page lopsided. */
+  right: 416px;
+  min-width: 180px;
   z-index: 4;
 }
 
@@ -309,6 +312,9 @@
   font-size: 14.5px;
   color: var(--ink2);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  /* The bar itself spans the whole gap between panels, but a results
+     dropdown that wide reads badly - keep it search-box sized. */
+  max-width: 480px;
 }
 
 .voice-chip-error {
