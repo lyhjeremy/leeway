@@ -83,7 +83,6 @@
     font-size: clamp(38px, 6.1vw, 76px); font-weight: 800; letter-spacing: -.038em;
     line-height: 1.03; margin: 0; max-width: 16ch; color: var(--ink);
   }
-  .hero h1 em { font-style: normal; color: var(--go-text); }
   .hero-sub {
     margin: 26px 0 0; font-size: 19.5px; color: var(--ink2); max-width: 62ch;
   }
@@ -92,15 +91,17 @@
 
   /* the four claims, stated as capabilities rather than superlatives */
   .claims {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
-    gap: 30px 34px; margin: 46px 0 0; padding: 34px 0 0;
-    border-top: 2px solid var(--ink);
+    display: grid; grid-template-columns: 1fr; gap: 0 56px; margin: 52px 0 0;
   }
+  @media (min-width: 760px) { .claims { grid-template-columns: 1fr 1fr; } }
+  .claim { padding: 18px 0 22px; border-top: 1px solid var(--hair); }
+  .claim:first-child, .claim:nth-child(2) { border-top: 2px solid var(--ink); }
+  @media (max-width: 759px) { .claim:nth-child(2) { border-top: 1px solid var(--hair); } }
   .claim h3 {
-    font-size: 17px; font-weight: 700; margin: 0 0 8px; color: var(--ink);
-    letter-spacing: -.012em; line-height: 1.25;
+    font-size: 18px; font-weight: 700; margin: 0 0 7px; color: var(--ink);
+    letter-spacing: -.014em; line-height: 1.25;
   }
-  .claim p { margin: 0; font-size: 15.5px; color: var(--ink2); line-height: 1.55; }
+  .claim p { margin: 0; font-size: 16px; color: var(--ink2); line-height: 1.55; }
 
   .bignum {
     font-weight: 800; font-size: clamp(88px, 11vw, 138px); line-height: .82;
@@ -146,7 +147,12 @@
   }
   .btn:hover { transform: translateY(-1px); }
   .btn-primary { background: var(--ink); color: var(--page); }
-  .btn-ghost { background: transparent; color: var(--ink); }
+  .textlink {
+    font-size: 16px; font-weight: 600; color: var(--ink2);
+    text-decoration: underline; text-underline-offset: 4px;
+    text-decoration-thickness: 1px; align-self: center;
+  }
+  .textlink:hover { color: var(--ink); }
 
   /* ---------- the spine: the page runs like a route ---------- */
   .route { position: relative; padding-bottom: 40px; }
@@ -256,11 +262,10 @@
 
   <section class="hero">
     <p class="kicker">Every EV planner finds you a charger.</p>
-    <h1>This one takes a detour to dodge <em>a left turn</em>.</h1>
+    <h1>This one takes a detour to dodge a left turn.</h1>
 
     <p class="hero-sub">
-      Leeway plans California road trips around the battery your car actually
-      has today. Then it spends a budget you set, in minutes, on the hazards
+      Leeway plans California road trips around the battery your car has today. Then it spends a budget you set, in minutes, on the hazards
       other planners route you straight through: the
       <strong>unsignaled crossing of a four-lane road</strong>, the
       <strong>left turn with no light</strong>, the
@@ -269,7 +274,7 @@
 
     <div class="cta-row">
       <a class="btn btn-primary" href="../">Plan a trip</a>
-      <a class="btn btn-ghost" href="https://github.com/lyhjeremy/leeway">Read the code</a>
+      <a class="textlink" href="https://github.com/lyhjeremy/leeway">or read the code</a>
     </div>
 
     <figure class="hero-proof">
@@ -290,22 +295,21 @@
         and warns you about the rest.</p>
       </div>
       <div class="claim">
-        <h3>It plans for a five-year-old battery</h3>
-        <p>You give it the range your car really shows at 100%. The Model 3 this
-        was built around left the factory rated at 263 miles and now does 205.
-        Planning from 263 is how people get stranded.</p>
+        <h3>Built for a five-year-old battery</h3>
+        <p>You give it the range your car shows at 100%. The Model 3 this was built
+        around left the factory rated at 263 miles and now does 205. Plan from
+        263 and the second leg comes up short.</p>
       </div>
       <div class="claim">
-        <h3>It grades itself and shows the marks</h3>
-        <p>Tell it what the battery really read when you arrived. It keeps a
-        running record of predicted against actual, with no favorable rounding,
-        and tunes future plans toward your car.</p>
+        <h3>Every prediction gets marked</h3>
+        <p>Tell it what the battery read when you arrived. It keeps a running record
+        of predicted against actual, and tunes later plans toward your car.</p>
       </div>
       <div class="claim">
-        <h3>It takes requests in plain English</h3>
-        <p>"Add an In-N-Out after an hour of driving." Every result is priced by
-        the detour it truly costs, routed and measured rather than guessed from
-        a straight line.</p>
+        <h3>Requests in plain English</h3>
+        <p>"Add an In-N-Out after an hour of driving." Each result is priced by
+        routing to the door and back out again, then subtracting the drive you
+        were making anyway.</p>
       </div>
     </div>
   </section>
@@ -331,15 +335,15 @@
       out what will be left when you arrive.
     </p>
     <p>
-      The name is the point. Leeway tells you <strong>how much room you have
-      when you get there</strong>, which is a more useful answer than yes or no.
+      Hence the name. What you get back is <strong>how much room you have when
+      you get there</strong>, rather than a yes or a no.
     </p>
   </section>
 
   <!-- 2 -->
   <section class="stop">
     <p class="eyebrow">↓ main screen</p>
-    <h2>Ask on the left, read the verdict on the right</h2>
+    <h2>What it needs before it can answer</h2>
     <p>
       Three things get you a plan: where you're going, <strong>what your battery
       reads now</strong>, and <strong>what your car does on a full charge</strong>.
@@ -375,23 +379,23 @@
       The verdict line reads <strong>Makeable with your reserve</strong>.
     </p>
     <p>
-      Under that sit the warnings it found on this particular route. A
-      <strong>9% grade descent</strong> over a mile. A twisty stretch with about
-      <strong>26 real bends</strong>. A Caltrans lane closure on SR-2. It also
-      reports what it already did about them: rerouted around two flagged spots
-      for a combined four minutes.
+      Under that sit the warnings it found on this route: a
+      <strong>9% grade descent</strong> that runs for a mile, with about
+      <strong>26 real bends</strong> after it, and a Caltrans lane closure on
+      SR-2. It also reports what it already did about them, which was to reroute
+      around two flagged spots for a combined four minutes.
     </p>
     <figure>
       <img class="shot" src="route-plan.jpg" width="1600" height="870" loading="lazy"
         alt="A planned route from Los Angeles to Santa Barbara with the verdict card reading Makeable with your reserve, arrive at 62 percent, 96 miles of leeway, followed by hazard warnings and the stop itinerary." />
-      <figcaption>Arrive at 62% · 96 mi of leeway · warnings the route actually contains.</figcaption>
+      <figcaption>Arrive at 62%, with the warnings found on this route underneath.</figcaption>
     </figure>
   </section>
 
   <!-- 4 -->
   <section class="stop stop--flag">
     <p class="eyebrow">↓ safety</p>
-    <h2>The part no charger map does</h2>
+    <h2>How the avoidance works</h2>
     <p>
       Four hazards, each with its own switch: <strong>left turns across big
       roads</strong>, <strong>unsignaled crossings of 4+ lane roads</strong>,
@@ -407,16 +411,16 @@
       to avoid.
     </p>
     <p>
-      Nothing here is guessed at. Traffic signals, lane counts
-      and rail level crossings come from OpenStreetMap, closures from the
-      Caltrans feed, and the turn geometry is measured off the route itself. The
-      detour at the top of this page came from exactly that.
+      Traffic signals, lane counts and rail level crossings come from
+      OpenStreetMap. Closures come from the Caltrans feed. The turn geometry is
+      measured off the route polyline itself. The detour at the top of this page
+      came out of those three.
     </p>
     <p>
-      Two limits worth stating plainly. Leeway warns about steep descents,
-      twisty sections, sun glare and strong wind without routing around them.
-      And when the OpenStreetMap servers are struggling, a hazard check gives up
-      rather than delaying your plan, so a flag can go missing on a bad day.
+      It does not reroute for everything. Steep descents, twisty sections, sun
+      glare and strong wind get a warning and nothing more. And on the days when
+      the OpenStreetMap servers are struggling, a hazard check gives up rather
+      than hold up your plan, which means a flag can go missing.
     </p>
     <figure>
       <img class="shot shot--narrow" src="tab-safety.jpg" width="1000" height="1341" loading="lazy"
@@ -433,7 +437,7 @@
   <!-- 5 -->
   <section class="stop">
     <p class="eyebrow">↓ four tabs</p>
-    <h2>Defaults you can leave alone, switches for when you can't</h2>
+    <h2>Four tabs you can ignore</h2>
     <p>
       The defaults are already the cautious answer, so the tabs are there for the
       times you disagree. Every control states plainly what it does and what it
@@ -469,7 +473,7 @@
   <!-- 6 -->
   <section class="stop">
     <p class="eyebrow">↓ finding a stop</p>
-    <h2>Say what you want, in the words you'd use</h2>
+    <h2>Ask for a stop in a sentence</h2>
     <p>
       Type or speak into the bar above the map. <em>"Add an In-N-Out stop after
       one hour of driving."</em> Leeway reads the sentence, including the budget
@@ -477,11 +481,11 @@
       <strong>"I don't mind a longer detour" means twenty.</strong>
     </p>
     <p>
-      Then it prices every candidate honestly. <strong>"adds 4 min"</strong> is a
-      real routed detour: Leeway routes you to the door and back out to your
-      destination, then subtracts the drive you were making anyway. Results are
-      ordered by what they cost you. If nothing fits your budget it
-      <strong>says so</strong> instead of quietly widening it.
+      Then it prices them. <strong>"adds 4 min"</strong> is a routed figure:
+      Leeway drives you to the door and back out to your destination, then
+      subtracts the trip you were making anyway. Results are ordered by what
+      they cost you. If nothing fits your budget it <strong>says so</strong>
+      instead of quietly widening it.
     </p>
     <p>
       Press add and the place becomes a real waypoint in the route list, ready to
@@ -497,7 +501,7 @@
   <!-- 7 -->
   <section class="stop">
     <p class="eyebrow">↓ for the road</p>
-    <h2>A card for the drive, and a question when you're back</h2>
+    <h2>For the drive itself</h2>
     <p>
       The trip card cuts the plan down to what you need at a glance behind the
       wheel. <strong>Leave with 68%.</strong> The Getty at 3 miles. The
@@ -509,16 +513,15 @@
     <figure>
       <img class="shot" src="trip-card.jpg" width="1600" height="867" loading="lazy"
         alt="The Leeway trip card: leave with 68 percent, the Getty Museum at 3 miles, a Tesla Supercharger at 60 miles arriving at 25 percent and charging to 80 percent, then 28 miles to arrive at 62 percent." />
-      <figcaption>The trip card, sized for a glance.</figcaption>
+      <figcaption>Everything the drive needs, on one screen that doesn't scroll.</figcaption>
     </figure>
     <p>
       Any single stop can also go out as a maps link, which the Tesla app and
       most navigation apps accept.
     </p>
     <p>
-      Then comes the part most planners skip. The next time you open Leeway it
-      asks <strong>how the trip actually went</strong>, and puts what happened
-      next to what it promised.
+      The next time you open Leeway it asks <strong>how the trip went</strong>,
+      and puts what happened next to what it promised.
     </p>
     <figure>
       <img class="shot" src="trip-logging.jpg" width="1600" height="869" loading="lazy"
@@ -528,7 +531,7 @@
     <p>
       Those answers do more than keep score. After
       <strong>three or more substantial trips</strong>, Leeway starts correcting
-      its own estimates toward what your car really does, weighted toward recent
+      its own estimates toward what your car does, weighted toward recent
       drives and deliberately cautious. A car that turns out hungrier than
       predicted gets <strong>the full correction</strong>. One that does better
       gets <strong>half</strong>, and never enough to make a plan bolder than the
@@ -551,7 +554,7 @@
   <!-- 8 -->
   <section class="stop">
     <p class="eyebrow">↓ the rest of it</p>
-    <h2>Small things, done properly</h2>
+    <h2>Sixteen smaller things</h2>
     <div class="grid">
       <div class="cell">
         <h3>Find my real range</h3>
@@ -559,11 +562,11 @@
       </div>
       <div class="cell">
         <h3>Dark mode</h3>
-        <p>A proper night theme with <strong>its own night basemap</strong>. Road layers get repainted so they don't disappear into the dark ground at city zoom.</p>
+        <p>A proper night theme, down to <strong>its own night basemap</strong>.</p>
       </div>
       <div class="cell">
         <h3>Miles or kilometers, °F or °C</h3>
-        <p>Switched <strong>independently</strong>, right on the map. Pick one of each and the whole plan re-reads in your units.</p>
+        <p>Switched <strong>independently</strong>, right on the map.</p>
       </div>
       <div class="cell">
         <h3>Recent trips</h3>
@@ -575,7 +578,7 @@
       </div>
       <div class="cell">
         <h3>Skip a stop</h3>
-        <p>Don't like a charger it chose? <strong>Skip it</strong>, and the whole plan gets rebuilt around the ones you'll actually use.</p>
+        <p>Don't like a charger it chose? <strong>Skip it</strong>, and the plan gets rebuilt around the ones you'll use.</p>
       </div>
       <div class="cell">
         <h3>Stops by hand</h3>
@@ -598,7 +601,7 @@
         <p>Hover a stop for its network, <strong>peak kW</strong>, stall count, price where it's known, a photo if one exists, and a link out to Google Maps.</p>
       </div>
       <div class="cell">
-        <h3>Readable at a glance</h3>
+        <h3>Color-coded pins</h3>
         <p>Superchargers are <strong>blue circles</strong>, other fast chargers <strong>orange diamonds</strong>, your own stops gray, hazards <strong>amber triangles</strong> pointing at the spot.</p>
       </div>
       <div class="cell">
@@ -607,11 +610,11 @@
       </div>
       <div class="cell">
         <h3>Start from where you are</h3>
-        <p>One tap makes your current location the origin. It gets used once, for that, and <strong>never stored</strong>.</p>
+        <p>One tap makes your current location the origin, used once and <strong>never stored</strong>.</p>
       </div>
       <div class="cell">
         <h3>Share a stop</h3>
-        <p>Send any charging stop out as a maps link. The <strong>Tesla app</strong> and most navigation apps accept it.</p>
+        <p>Any stop goes out as a maps link, which the <strong>Tesla app</strong> accepts.</p>
       </div>
       <div class="cell">
         <h3>No account, no tracking</h3>
@@ -647,7 +650,7 @@
   <!-- end -->
   <section class="stop stop--end">
     <p class="eyebrow">Arrive · what it's built on</p>
-    <h2>Real data, no guessing</h2>
+    <h2>Where the numbers come from</h2>
     <p>
       Leeway is free, runs on free infrastructure, and has no business model. It
       covers <strong>California</strong> for now.
@@ -672,7 +675,7 @@
     <h2>Find out what's actually left in the battery</h2>
     <div class="cta-row">
       <a class="btn btn-primary" href="../">Plan a trip</a>
-      <a class="btn btn-ghost" href="https://github.com/lyhjeremy/leeway">Read the code</a>
+      <a class="textlink" href="https://github.com/lyhjeremy/leeway">or read the code</a>
     </div>
   </section>
 

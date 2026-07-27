@@ -6,32 +6,33 @@ Every EV planner finds you a charger. This one will also spend a minute of
 your day driving around the block so you don't have to cross four lanes of
 traffic without a light.
 
-Leeway plans California road trips around the battery your car actually has
-today, then spends a detour budget you set, in minutes, on hazards other
-planners route you straight through: unprotected left turns, unsignaled
+Leeway plans California road trips around the battery your car has today,
+then spends a detour budget you set, in minutes, on hazards other planners
+route you straight through: unprotected left turns, unsignaled
 crossings of 4+ lane roads, rail level crossings, and live Caltrans
-closures. Afterwards it asks how the trip really went, and keeps the record
-of how wrong it was.
+closures. Afterwards it asks how the trip went, and keeps the record of how
+wrong it was.
 
 Built around a real 2021 Tesla Model 3 Standard Range Plus: 205 mi at 100%,
 down from 263 new. Full product plan: `../LEEWAY_PRODUCT_PLAN.md` (one level
 up, not in this repo — this repo is the codebase only).
 
-### The four that aren't standard
+### The unusual parts
 
-1. **Hazard-aware rerouting.** Four detectors (unprotected left, unsignaled
-   4+ lane crossing, rail crossing, Caltrans closure) each with its own
-   switch, behind a detour budget of 5, 10, or 20 minutes. Anything
-   avoidable inside the budget gets routed around; the rest is flagged.
-   Detection is real OSM geometry plus the Caltrans feed, never a guess.
-2. **Degradation as the starting point.** The plan begins from the range
-   your car shows at 100% today, not the factory number.
-3. **A self-grading record.** Log the arrival percentage you actually saw.
-   Leeway keeps predicted against actual with no favorable rounding, and
-   after three substantial trips starts correcting toward your car, biased
-   so an optimistic correction can never make a plan bolder than stock.
-4. **Plain-language stops.** "Add an In-N-Out after an hour of driving."
-   Each candidate is priced by a real routed detour, not a straight line.
+- **Hazard-aware rerouting.** Four detectors, each with its own switch:
+  unprotected left, unsignaled 4+ lane crossing, rail crossing, Caltrans
+  closure. Behind them sits a detour budget of 5, 10, or 20 minutes.
+  Anything avoidable inside the budget gets routed around, and the rest is
+  flagged. Signals, lane counts and crossings come from OSM geometry;
+  closures come from the Caltrans feed.
+- **Degradation as the starting point.** The plan begins from the range
+  your car shows at 100% today, not the factory number.
+- **A self-grading record.** Log the arrival percentage you saw. Leeway
+  keeps predicted against actual with no favorable rounding, and
+  after three substantial trips starts correcting toward your car, biased
+  so an optimistic correction can never make a plan bolder than stock.
+- **Plain-language stops.** "Add an In-N-Out after an hour of driving."
+  Each candidate is priced by a routed detour rather than a straight line.
 
 **Live:** https://lyhjeremy.github.io/leeway/ ·
 **Product overview:** https://lyhjeremy.github.io/leeway/overview/ ·
@@ -98,12 +99,11 @@ The public Overpass servers are the other scarcity, and they fail as
 latency rather than as an error. Measured against production, the three
 hazard queries alone turned a 2-mile plan into a 99-second one, because a
 mirror that accepts connections and then hangs costs a full timeout on
-every retry rotation. Three things bound it now. A 5s connect and 20s
-read timeout make a dead mirror cheap. A 15s per-check budget in the
-planner drops that hazard check to no flags once it expires. A circuit
-breaker then stops asking for five minutes after three consecutive
-failures. That last one matters more than it looks: a check that times
-out caches nothing, so without a breaker every later plan re-pays the
+every retry rotation. Timeouts are 5s connect and 20s read, so a dead
+mirror is cheap. The planner gives each check 15 seconds before dropping
+it to no flags, and a circuit breaker stops asking for five minutes after
+three consecutive failures. The breaker matters more than it looks: a check
+that times out caches nothing, so without a breaker every later plan re-pays the
 full cost of discovering the same outage. Safety flags are the one part
 of a plan allowed to go missing, because a plan that never returns is
 worse than a plan without warnings.
@@ -127,9 +127,10 @@ cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload -
 
 ## Tests
 
-The backend test suite (85 and counting) runs fully offline against a faked provider layer
-(synthetic routes with configurable speed/elevation/highway mix, canned
-stations, weather, OSM and Caltrans data) — they cover the range math,
+The backend test suite (85 and counting) runs fully offline against a faked
+provider layer (synthetic routes with configurable speed/elevation/highway
+mix, canned stations, weather, OSM and Caltrans data) — they cover the range
+math,
 every safety-flag detector, the planner end to end including its honest
 failure notes, and the provider caches. The frontend's calibration math
 has its own vitest suite. CI runs all of it plus lint and build on every
