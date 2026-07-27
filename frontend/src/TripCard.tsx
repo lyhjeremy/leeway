@@ -17,6 +17,7 @@ interface Props {
 // just the numbers you need mid-drive.
 export default function TripCard({ plan, origin, destination, batteryPct, units, onClose }: Props) {
   const dist = (mi: number) => `${Math.round(units === 'km' ? mi * MI_TO_KM : mi)} ${units}`
+  const driveTime = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h ${min % 60}min` : `${min}min`)
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card trip-card" onClick={(e) => e.stopPropagation()}>
@@ -38,6 +39,9 @@ export default function TripCard({ plan, origin, destination, batteryPct, units,
           <div className="trip-card-row" key={i}>
             <span className={s.is_waypoint ? 'trip-card-pin wp' : s.is_supercharger ? 'trip-card-pin sc' : 'trip-card-pin ccs'} />
             <div>
+              {s.leg_drive_min != null && s.leg_distance_mi != null && (
+                <div className="trip-card-hop">↓ {dist(s.leg_distance_mi)} · {driveTime(s.leg_drive_min)}</div>
+              )}
               <div className="trip-card-title">{s.title}</div>
               <div className="trip-card-sub">
                 {s.is_waypoint
@@ -53,6 +57,11 @@ export default function TripCard({ plan, origin, destination, batteryPct, units,
         <div className="trip-card-row trip-card-end">
           <span className="trip-card-dot outline" />
           <div>
+            {plan.last_leg_drive_min != null && plan.last_leg_distance_mi != null && (
+              <div className="trip-card-hop">
+                ↓ {dist(plan.last_leg_distance_mi)} · {driveTime(plan.last_leg_drive_min)}
+              </div>
+            )}
             <div className="trip-card-title">Arrive at {plan.arrival_pct}%</div>
             <div className="trip-card-sub">
               {dist(plan.distance_mi)} · {Math.floor(plan.duration_min / 60)}h {plan.duration_min % 60}min total

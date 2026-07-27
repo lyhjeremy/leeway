@@ -1513,6 +1513,17 @@ input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
   top: calc(16px + env(safe-area-inset-top));
 }
 
+/* The hop line: how far and how long the drive INTO the row's stop is.
+   Muted and mono so the numbers scan as waypoints on the rail, not as
+   part of the stop's own facts. */
+.leg-hop,
+.trip-card-hop {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
 .native .accuracy-page {
   padding-top: env(safe-area-inset-top);
 }

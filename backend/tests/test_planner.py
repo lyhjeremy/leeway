@@ -37,6 +37,31 @@ def test_long_trip_gets_real_multi_stop_plan(world):
     assert miles == sorted(miles)
 
 
+def test_every_hop_reports_distance_and_drive_time(world):
+    """Each stop carries the real drive INTO it; the plan carries the last
+    hop into the destination - and the hops must sum to the whole trip."""
+    world.stations_along(LA, SF, every_mi=40)
+    plan = _plan(world)
+    assert plan["feasible"] and plan["stops"]
+    for stop in plan["stops"]:
+        assert stop["leg_distance_mi"] > 0
+        assert stop["leg_drive_min"] > 0
+    assert plan["last_leg_distance_mi"] > 0
+    assert plan["last_leg_drive_min"] > 0
+    hops = sum(s["leg_distance_mi"] for s in plan["stops"]) + plan["last_leg_distance_mi"]
+    assert abs(hops - plan["distance_mi"]) < 1
+    # The fake world drives at 60mph, so minutes ~= miles per hop
+    for s in plan["stops"]:
+        assert abs(s["leg_drive_min"] - s["leg_distance_mi"]) <= 2
+
+
+def test_incomplete_plan_reports_no_last_leg(world):
+    plan = _plan(world)  # zero stations: planning stops partway
+    assert not plan["feasible"]
+    assert plan["last_leg_distance_mi"] is None
+    assert plan["last_leg_drive_min"] is None
+
+
 def test_no_chargers_is_honest_not_fake_feasible(world):
     plan = _plan(world)  # zero stations anywhere
     assert not plan["feasible"]
@@ -129,6 +154,9 @@ def test_waypoint_passes_battery_through(world):
     assert len(wp_stops) == 1
     assert wp_stops[0]["charge_to_pct"] == wp_stops[0]["arrive_pct"]
     assert wp_stops[0]["title"] == "Errand"
+    # The hop INTO the waypoint is its sub-trip's final leg (~45mi here)
+    assert 40 < wp_stops[0]["leg_distance_mi"] < 50
+    assert wp_stops[0]["leg_drive_min"] > 0
 
 
 def test_arrival_target_adds_a_late_stop(world):

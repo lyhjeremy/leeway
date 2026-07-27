@@ -207,6 +207,7 @@ function Planner() {
 
   // All numbers live in miles internally; only the display converts.
   const dist = (mi: number) => `${Math.round(units === 'km' ? mi * MI_TO_KM : mi)} ${units}`
+  const driveTime = (min: number) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} min`)
   const tempDisplay = (f: number) => (tempUnit === 'C' ? Math.round(((f - 32) * 5) / 9) : Math.round(f))
   const tempFromDisplay = (v: number) => (tempUnit === 'C' ? (v * 9) / 5 + 32 : v)
 
@@ -1509,6 +1510,11 @@ function Planner() {
                       }
                     />
                     <div>
+                      {s.leg_drive_min != null && s.leg_distance_mi != null && (
+                        <div className="leg-hop">
+                          ↓ {dist(s.leg_distance_mi)} · {driveTime(s.leg_drive_min)}
+                        </div>
+                      )}
                       <div className="t">{s.title}</div>
                       <div className="d">
                         {s.is_waypoint
@@ -1534,6 +1540,11 @@ function Planner() {
                 <div className="leg">
                   <span className="pin-dot pin-dot-end" />
                   <div>
+                    {plan.last_leg_drive_min != null && plan.last_leg_distance_mi != null && (
+                      <div className="leg-hop">
+                        ↓ {dist(plan.last_leg_distance_mi)} · {driveTime(plan.last_leg_drive_min)}
+                      </div>
+                    )}
                     <div className="t">
                       {plan.arrival_pct < 0 ? "Won't make it as planned" : `Arrive at ${plan.arrival_pct}%`}
                     </div>

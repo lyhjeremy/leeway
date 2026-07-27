@@ -25,6 +25,9 @@ export interface ChargingStop {
   stall_count?: number | null
   cost?: string | null
   photo_url?: string | null
+  // The drive INTO this stop from the previous point (origin or prior stop)
+  leg_distance_mi?: number | null
+  leg_drive_min?: number | null
 }
 
 export interface Waypoint {
@@ -101,4 +104,7 @@ export interface PlanResponse {
   weather: WeatherInfo | null
   safety_flags: SafetyFlag[]
   calibration_factor?: number
+  // The last hop, into the destination; per-stop hops live on stops
+  last_leg_distance_mi?: number | null
+  last_leg_drive_min?: number | null
 }

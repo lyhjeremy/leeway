@@ -264,6 +264,9 @@ async def plan_trip(
                     "stall_count": None,
                     "cost": None,
                     "photo_url": None,
+                    # The leg INTO a waypoint is its sub-trip's final hop.
+                    "leg_distance_mi": subs[i]["last_leg_distance_mi"],
+                    "leg_drive_min": subs[i]["last_leg_drive_min"],
                 })
             stops.extend(subs[i + 1]["stops"])
 
@@ -282,6 +285,8 @@ async def plan_trip(
             "weather": subs[0]["weather"],
             "safety_flags": [f for s in subs for f in s["safety_flags"]],
             "calibration_factor": calibration_factor,
+            "last_leg_distance_mi": subs[-1]["last_leg_distance_mi"],
+            "last_leg_drive_min": subs[-1]["last_leg_drive_min"],
         }
 
     stops_out = []
@@ -309,6 +314,11 @@ async def plan_trip(
     current_pct = battery_pct
     note = None
     rate_limited = False
+    # The drive into the destination itself (distance/minutes) - the legs
+    # into each charging stop live on the stops; this covers the last hop.
+    # Stays None when planning couldn't complete, so the UI never shows a
+    # leg the planner didn't actually verify.
+    final_leg: dict | None = None
 
     for _ in range(MAX_STOPS + 1):
         try:
@@ -347,6 +357,7 @@ async def plan_trip(
             total_duration_min += remaining["duration_min"]
             final_arrival_pct = estimate.arrival_pct
             final_leeway_mi = estimate.leeway_mi
+            final_leg = {"distance_mi": remaining["distance_mi"], "duration_min": remaining["duration_min"]}
             feasible = True
             break
 
@@ -489,6 +500,10 @@ async def plan_trip(
             "stall_count": chosen.get("stall_count"),
             "cost": chosen.get("cost"),
             "photo_url": chosen.get("photo_url"),
+            # The drive INTO this stop from the previous point (origin or the
+            # stop before it) - real verified-leg numbers, not a slice.
+            "leg_distance_mi": round(chosen_leg["distance_mi"], 1),
+            "leg_drive_min": round(chosen_leg["duration_min"]),
         })
 
         current_start = (chosen["lat"], chosen["lon"])
@@ -550,13 +565,21 @@ async def plan_trip(
                 elevations_m = [e for leg in leg_elevations for e in leg]
                 total_distance_mi = sum(r["distance_mi"] for r in reroute["routes"])
                 charge_total_min = 0.0
-                for stop, arrive_pct in zip(stops_out, reroute["stop_arrive_pcts"]):
+                for i, (stop, arrive_pct) in enumerate(zip(stops_out, reroute["stop_arrive_pcts"])):
                     charge_min = range_model.estimate_charge_time_min(
                         full_range_mi, arrive_pct, charge_to_pct, stop["max_kw"],
                     )
                     stop["arrive_pct"] = round(arrive_pct)
                     stop["charge_time_min"] = round(charge_min) if charge_min else None
+                    # The detour changed the legs - the per-stop leg numbers
+                    # must describe the rerouted drive, not the original.
+                    stop["leg_distance_mi"] = round(reroute["routes"][i]["distance_mi"], 1)
+                    stop["leg_drive_min"] = round(reroute["routes"][i]["duration_min"])
                     charge_total_min += charge_min or 0.0
+                final_leg = {
+                    "distance_mi": reroute["routes"][-1]["distance_mi"],
+                    "duration_min": reroute["routes"][-1]["duration_min"],
+                }
                 total_duration_min = reroute["drive_min"] + charge_total_min
                 final_arrival_pct = reroute["final_arrival_pct"]
                 final_leeway_mi = reroute["final_leeway_mi"]
@@ -586,6 +609,9 @@ async def plan_trip(
         # Echoed back so the UI (and anyone reading the response) can see the
         # learned adjustment was actually applied, not silently dropped.
         "calibration_factor": calibration_factor,
+        # The last hop (into the destination); per-stop hops ride on stops.
+        "last_leg_distance_mi": round(final_leg["distance_mi"], 1) if final_leg else None,
+        "last_leg_drive_min": round(final_leg["duration_min"]) if final_leg else None,
     }
 
 
