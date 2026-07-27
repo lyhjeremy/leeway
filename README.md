@@ -20,12 +20,25 @@ repo is the codebase only).
   real per-leg check proved it wasn't — every candidate stop is verified
   with a real routing call before it's accepted).
 - Adjusts range for live weather (temperature, headwind), passenger and
-  luggage load, and an optional manual temperature.
+  luggage load, and an optional manual temperature. Set a departure time
+  and the weather becomes the hourly forecast for that hour (up to 7 days
+  out), sun glare computes for when you actually leave, and construction
+  closures filter to what will be active on the road.
+- Learns your car: logged predicted-vs-actual trips feed a recency-weighted
+  correction into future estimates once 3+ substantial trips exist. The
+  correction is biased to the safe side — a hungrier-than-predicted car
+  gets the full adjustment, a better-than-predicted one only half, never
+  below 0.9 — and the plan says out loud when it's active.
+- Charging preferences: fewest stops / fastest trip / best amenities,
+  Superchargers-only or non-Tesla-only, specific networks (ChargePoint,
+  Electrify America, EVgo, Tesla, Blink), a minimum charger speed, and a
+  break rhythm ("stop at least every 2h") that plans stops for the driver
+  rather than the battery when that binds first.
 - Safety flags, each its own switch: unprotected left turns, unsignaled
-  crossings of 4+ lane roads, and rail crossings (all from real OSM
-  data), plus steep descents, sun glare, and strong-wind days. A detour
-  budget (3 or 10 minutes) reroutes around point hazards when the cost
-  fits.
+  crossings of 4+ lane roads, rail crossings, and active Caltrans lane
+  closures (all from real data), plus steep descents, twisty sections,
+  sun glare, and strong-wind days. A detour budget (3 or 10 minutes)
+  reroutes around point hazards when the cost fits.
 - A route editor in the Google style: up to three stops between start and
   destination, searchable, drag-to-reorder in any direction, with route
   alternatives (I-5 vs 101 vs 99) to compare and pick.
@@ -48,14 +61,33 @@ repo is the codebase only).
   integration (`render.yaml` at the repo root).
 
 Data sources: OpenRouteService (routing, geocoding, elevation), Open Charge
-Map (stations), Open-Meteo (weather), Overpass/OSM (POI search), Gemini
-(voice query parsing). Coverage is California for now.
+Map (stations), Open-Meteo (weather), Overpass/OSM (POI search), Caltrans
+LCS (lane closures), Gemini (voice query parsing). Coverage is California
+for now. Successful provider responses are cached in-process (routes 6h,
+stations 30min, weather 15min) to stretch the free-tier quotas — the ORS
+daily directions ceiling is the stack's real scarcity, documented at
+roughly 150–200 plans/day.
 
 ## Local dev
 
 ```
 cd frontend && npm install && npm run dev
 cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload --port 7861
+```
+
+## Tests
+
+77 backend tests run fully offline against a faked provider layer
+(synthetic routes with configurable speed/elevation/highway mix, canned
+stations, weather, OSM and Caltrans data) — they cover the range math,
+every safety-flag detector, the planner end to end including its honest
+failure notes, and the provider caches. The frontend's calibration math
+has its own vitest suite. CI runs all of it plus lint and build on every
+push.
+
+```
+cd backend && python -m pytest tests
+cd frontend && npm test
 ```
 
 ## A real bug found during Stage 0

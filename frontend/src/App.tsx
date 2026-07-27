@@ -104,7 +104,7 @@ const NIGHT_ROAD_TWEAKS: [string, string][] = [
 ]
 
 function applyNightRoadContrast(map: maplibregl.Map) {
-  map.once('idle', () => {
+  map.once('style.load', () => {
     for (const [id, color] of NIGHT_ROAD_TWEAKS) {
       if (map.getLayer(id)) map.setPaintProperty(id, 'line-color', color)
     }
@@ -270,7 +270,12 @@ function Planner() {
     const map = mapRef.current
     if (!map) return
     map.setStyle(next === 'dark' ? 'https://tiles.openfreemap.org/styles/fiord' : 'https://tiles.openfreemap.org/styles/liberty')
-    map.once('styledata', () => {
+    // 'style.load', NOT 'styledata': styledata fires while the old style is
+    // still being torn down, so a redraw triggered there can land its layers
+    // in the doomed style and lose them (seen live as "toggle theme = route,
+    // pins, and stops all vanish"). style.load fires once the new style is
+    // ready for layers.
+    map.once('style.load', () => {
       map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
       setPlan((p) => (p ? { ...p } : p))
       setRouteAlts((r) => (r ? [...r] : r))
@@ -299,6 +304,7 @@ function Planner() {
     })
     if (document.documentElement.dataset.theme === 'dark') applyNightRoadContrast(map)
     mapRef.current = map
+    if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__leewayMap = map
     return () => map.remove()
   }, [])
 
@@ -354,6 +360,13 @@ function Planner() {
         if (existing) existing.setData(data)
         else {
           map.addSource(`alt-${i}`, { type: 'geojson', data })
+          // Below the route line when it exists. After a theme swap wipes
+          // every layer, this effect can run before the route redraws -
+          // anchoring on the missing 'route-line' then THROWS mid-dispatch
+          // and silently kills the queued route redraw behind it (found as
+          // "toggle dark while comparing corridors = route vanishes"). The
+          // route is added after us in that case, so it lands on top anyway.
+          const anchor = map.getLayer('route-line') ? 'route-line' : undefined
           map.addLayer(
             {
               id: `alt-line-${i}`,
@@ -361,13 +374,13 @@ function Planner() {
               source: `alt-${i}`,
               paint: { 'line-color': '#8b9083', 'line-width': 3, 'line-dasharray': [2, 2] },
             },
-            'route-line',
+            anchor,
           )
         }
       })
     }
     if (map.isStyleLoaded()) draw()
-    else map.once('idle', draw)
+    else map.once('style.load', draw)
   }, [routeAlts])
 
   useEffect(() => {
@@ -552,10 +565,13 @@ function Planner() {
       map.fitBounds(bounds, { padding: fitPadding(), duration: 500 })
     }
 
-    // 'idle', not 'load': load fires once per map lifetime, so a theme
-    // swap (setStyle) left this waiting forever - route gone, stale markers.
+    // 'style.load', not 'load' (fires once per map lifetime - a theme swap
+    // left this waiting forever) and not 'idle' (waits for every TILE, so on
+    // a slow tile fetch the route stayed invisible for 15+ seconds after a
+    // theme swap). style.load fires per setStyle, as soon as layers can be
+    // added.
     if (map.isStyleLoaded()) drawRoute()
-    else map.once('idle', drawRoute)
+    else map.once('style.load', drawRoute)
   }, [plan, origin, destination])
 
   async function runPlan(overrides: {
