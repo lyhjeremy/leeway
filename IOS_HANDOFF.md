@@ -24,7 +24,10 @@ origin. No server changes needed.
 ## Build steps
 
 1. Clone the repo and open `frontend/ios/App/App.xcodeproj` in Xcode.
-   First open takes a few minutes while Xcode resolves Swift packages.
+   First open takes a few minutes while Xcode resolves Swift packages
+   (Capacitor core comes from GitHub; the three plugins are vendored in
+   `frontend/ios/vendor/`, so no npm install is ever needed). Internet is
+   required for that first resolution.
 2. In the App target → Signing & Capabilities: select your team. If the
    bundle ID `io.github.lyhjeremy.leeway` can't be registered under your
    account, change it — and mirror the change in
@@ -77,5 +80,7 @@ Only needed when frontend code changes (requires Node 20+):
 cd frontend && npm ci && npm run sync:ios
 ```
 
-That rebuilds the web app with app-relative paths and copies it into
-`ios/App/App/public/`, which is committed so you normally never run it.
+That rebuilds the web app with app-relative paths, copies it into
+`ios/App/App/public/`, and re-vendors the Swift plugin packages (cap sync
+resets their paths to node_modules; the script puts them back). All of it
+is committed, so you normally never run any of this.

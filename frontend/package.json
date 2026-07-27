@@ -10,7 +10,7 @@
     "test": "vitest run",
     "preview": "vite preview",
     "build:app": "tsc -b && vite build --base=./",
-    "sync:ios": "npm run build:app && cap sync ios"
+    "sync:ios": "npm run build:app && cap sync ios && node scripts/vendor-ios-plugins.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.4.2",
