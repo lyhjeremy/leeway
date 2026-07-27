@@ -11,7 +11,7 @@ plan: `../LEEWAY_PRODUCT_PLAN.md` (one level up, not in this repo — this
 repo is the codebase only).
 
 **Live:** https://lyhjeremy.github.io/leeway/ ·
-**Product overview:** https://lyhjeremy.github.io/leeway/promo/ ·
+**Product overview:** https://lyhjeremy.github.io/leeway/overview/ ·
 backend health at `https://leeway-api.onrender.com/api/health`.
 
 ## What it does
@@ -70,19 +70,19 @@ stations 30min, weather 15min) to stretch the free-tier quotas — the ORS
 daily directions ceiling is the stack's real scarcity, documented at
 roughly 150–200 plans/day.
 
-The public Overpass servers are the other scarcity, and they fail
-differently: not with an error but with latency. Measured against
-production, the three hazard queries alone turned a 2-mile plan into a
-99-second one, because a mirror that accepts connections and then hangs
-costs a full timeout on every retry rotation. Three things keep that
-bounded — a 5s connect / 20s read timeout so a dead mirror is cheap, a
-15s per-check budget in the planner after which that hazard check
-degrades to no flags, and a circuit breaker that stops asking for five
-minutes after three consecutive failures. The breaker matters more than
-it looks: a check that times out caches nothing, so without it every
-later plan re-pays the full cost of discovering the same outage. Safety
-flags are the one part of a plan allowed to go missing; a plan that never
-returns is worse than a plan without warnings.
+The public Overpass servers are the other scarcity, and they fail as
+latency rather than as an error. Measured against production, the three
+hazard queries alone turned a 2-mile plan into a 99-second one, because a
+mirror that accepts connections and then hangs costs a full timeout on
+every retry rotation. Three things bound it now. A 5s connect and 20s
+read timeout make a dead mirror cheap. A 15s per-check budget in the
+planner drops that hazard check to no flags once it expires. A circuit
+breaker then stops asking for five minutes after three consecutive
+failures. That last one matters more than it looks: a check that times
+out caches nothing, so without a breaker every later plan re-pays the
+full cost of discovering the same outage. Safety flags are the one part
+of a plan allowed to go missing, because a plan that never returns is
+worse than a plan without warnings.
 
 ## iOS app
 
@@ -103,7 +103,7 @@ cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload -
 
 ## Tests
 
-The backend test suite (84 and counting) runs fully offline against a faked provider layer
+The backend test suite (85 and counting) runs fully offline against a faked provider layer
 (synthetic routes with configurable speed/elevation/highway mix, canned
 stations, weather, OSM and Caltrans data) — they cover the range math,
 every safety-flag detector, the planner end to end including its honest
