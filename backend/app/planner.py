@@ -537,9 +537,17 @@ async def plan_trip(
     if feasible and point_flags and safety_mode in AVOID_BUDGET_MIN and leg_records:
         budget_min = AVOID_BUDGET_MIN[safety_mode]
         endpoints = [origin, destination] + [(s["lat"], s["lon"]) for s in stops_out]
+        # The endpoint clearance protects arrivals (a charger's own exit
+        # lefts must not make the charger unreachable) - but on a short hop
+        # the fixed radius swallowed the WHOLE route, so a genuinely
+        # avoidable mid-route hazard was never even tried (found live: an
+        # unsignaled 7-lane crossing between two addresses a block apart,
+        # detour budget set, and the planner still only flagged it). Scale
+        # the guard down with trip length; 30m is still "at the doorstep".
+        clearance_mi = min(HAZARD_ENDPOINT_CLEARANCE_MI, max(0.02, total_distance_mi * 0.2))
         avoidable = [
             f for f in point_flags
-            if all(haversine_mi(f["lat"], f["lon"], la, lo) > HAZARD_ENDPOINT_CLEARANCE_MI for la, lo in endpoints)
+            if all(haversine_mi(f["lat"], f["lon"], la, lo) > clearance_mi for la, lo in endpoints)
         ]
         if avoidable:
             reroute = await _try_avoid_hazards(

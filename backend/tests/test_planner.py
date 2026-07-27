@@ -225,6 +225,34 @@ def test_calibration_factor_survives_waypoint_split(world):
     assert plan["calibration_factor"] == 1.1
 
 
+def test_short_trip_hazard_still_gets_the_detour_attempt(world):
+    """Found live: two addresses a block apart across an unsignaled 7-lane
+    road, detour budget set to 10 min - and the planner only flagged it,
+    because the fixed 0.15mi endpoint-clearance guard swallowed the entire
+    short route. The guard must scale down with trip length so a mid-route
+    hazard stays avoidable."""
+    origin = (34.0, -118.0)
+    destination = (34.0036, -118.0)  # ~0.25 mi due north
+    # An unsignaled east-west 7-lane artery crossing the route's midpoint
+    world.overpass_result = {
+        "elements": [{
+            "type": "way",
+            "tags": {"highway": "primary", "name": "Big Blvd", "lanes": "7"},
+            "geometry": [{"lat": 34.0018, "lon": -118.01}, {"lat": 34.0018, "lon": -117.99}],
+        }]
+    }
+
+    flagged_only = run(planner.plan_trip(origin, destination, **CAR, safety_mode="flag_only"))
+    assert any(f.get("kind") == "wide_crossing" for f in flagged_only["safety_flags"])
+    assert not (flagged_only["note"] or "").startswith("Rerouted")
+
+    avoided = run(planner.plan_trip(origin, destination, **CAR, safety_mode="avoid_hard"))
+    # The fake router returns the same route for the detour (0 added min),
+    # so the reroute must be ATTEMPTED and accepted - before the fix the
+    # note stayed empty because the hazard was never considered avoidable.
+    assert avoided["note"] and "Rerouted around 1 flagged spot" in avoided["note"]
+
+
 def test_localize_km_and_c():
     plan = {
         "note": "No fast charger within 50 miles of mile 30.",
