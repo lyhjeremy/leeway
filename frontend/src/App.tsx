@@ -141,6 +141,11 @@ function Planner() {
   const [stopMode, setStopMode] = useState<StopMode>('fewest_stops')
   const [chargerFilter, setChargerFilter] = useState<ChargerFilter>('all')
   const [safetyMode, setSafetyMode] = useState<SafetyMode>('flag_only')
+  const [hazardTypes, setHazardTypes] = useState<Record<string, boolean>>({
+    unprotected_left: true,
+    wide_crossing: true,
+    rail_crossing: true,
+  })
   const [avoidTolls, setAvoidTolls] = useState(false)
   const [avoidHighways, setAvoidHighways] = useState(false)
   const [showOptions, setShowOptions] = useState(false)
@@ -608,6 +613,7 @@ function Planner() {
         tempOverrideF: tempOverrideOn ? tempOverrideF : null,
         units,
         tempUnit,
+        hazardTypes: Object.keys(hazardTypes).filter((k) => hazardTypes[k]),
         excludedStationIds: overrides.excludedStationIds,
         waypoints: allWaypoints,
       })
@@ -801,6 +807,7 @@ function Planner() {
     passengers > 0,
     suitcases > 0,
     tempOverrideOn,
+    Object.values(hazardTypes).some((v) => !v),
   ].filter(Boolean).length
 
   return (
@@ -983,8 +990,27 @@ function Planner() {
             </div>
             <div className="seg-hint">
               {safetyMode === 'flag_only'
-                ? 'Unprotected lefts and rail crossings get flagged, route unchanged.'
-                : `Reroutes around them when the detour adds ${safetyMode === 'avoid_quick' ? '3' : '10'} minutes or less.`}
+                ? 'Checked hazards get flagged on the map, route unchanged.'
+                : `Reroutes around checked hazards when the detour adds ${safetyMode === 'avoid_quick' ? '3' : '10'} minutes or less.`}
+            </div>
+            <div className="toggles" style={{ marginTop: 10 }}>
+              {(
+                [
+                  ['unprotected_left', 'Unprotected left turns'],
+                  ['wide_crossing', 'Crossing 4+ lane roads without a signal'],
+                  ['rail_crossing', 'Rail crossings'],
+                ] as [string, string][]
+              ).map(([key, label]) => (
+                <label className="tog" key={key}>
+                  <span>{label}</span>
+                  <input
+                    type="checkbox"
+                    className="switch"
+                    checked={hazardTypes[key]}
+                    onChange={(e) => setHazardTypes({ ...hazardTypes, [key]: e.target.checked })}
+                  />
+                </label>
+              ))}
             </div>
           </div>
 

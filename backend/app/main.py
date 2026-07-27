@@ -14,7 +14,7 @@ from .voice import VoiceSearchError, find_stops
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 
 app = FastAPI(title="Leeway API")
 
@@ -86,6 +86,9 @@ class PlanRequest(BaseModel):
     passengers: int = Field(default=0, ge=0, le=6)  # beyond the driver
     suitcases: int = Field(default=0, ge=0, le=10)
     temp_override_f: float | None = Field(default=None, ge=-30, le=130)
+    hazard_types: list[Literal["unprotected_left", "wide_crossing", "rail_crossing"]] = Field(
+        default=["unprotected_left", "wide_crossing", "rail_crossing"],
+    )
     units: Literal["mi", "km"] = "mi"  # numeric fields stay miles; narrative strings get localized
     temp_unit: Literal["F", "C"] = "F"  # independent of distance - km with °F is a real combination
 
@@ -130,6 +133,7 @@ async def plan(req: PlanRequest):
             passengers=req.passengers,
             suitcases=req.suitcases,
             temp_override_f=req.temp_override_f,
+            hazard_types=tuple(req.hazard_types),
         )
         if req.units == "km":
             result = localize_km(result)

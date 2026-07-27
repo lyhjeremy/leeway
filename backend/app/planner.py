@@ -207,6 +207,7 @@ async def plan_trip(
     passengers: int = 0,  # beyond the driver
     suitcases: int = 0,
     temp_override_f: float | None = None,  # trust the driver's number over the midpoint forecast
+    hazard_types: tuple = ("unprotected_left", "wide_crossing", "rail_crossing"),
 ) -> dict:
     if waypoints:
         # Each waypoint splits the trip into independently-planned sub-trips
@@ -225,6 +226,7 @@ async def plan_trip(
                 safety_mode=safety_mode, charger_filter=charger_filter,
                 arrival_target_pct=arrival_target_pct if is_last else 0.0,
                 passengers=passengers, suitcases=suitcases, temp_override_f=temp_override_f,
+                hazard_types=hazard_types,
             )
             subs.append(sub)
             batt = max(sub["arrival_pct"], 1.0)  # a failed sub-trip still chains, feasible=False carries the truth
@@ -478,7 +480,7 @@ async def plan_trip(
 
     geometry = [pt for leg in leg_geometries for pt in leg]
     elevations_m = [e for leg in leg_elevations for e in leg]
-    point_flags = await _point_hazard_flags(geometry)
+    point_flags = await _point_hazard_flags(geometry, hazard_types)
 
     if feasible and point_flags and safety_mode in AVOID_BUDGET_MIN and leg_records:
         budget_min = AVOID_BUDGET_MIN[safety_mode]
@@ -524,7 +526,7 @@ async def plan_trip(
                     f"Rerouted around {len(avoidable)} flagged spot(s) for about "
                     f"+{max(1, round(reroute['added_min']))} min."
                 ))
-                point_flags = await _point_hazard_flags(geometry)
+                point_flags = await _point_hazard_flags(geometry, hazard_types)
 
     safety_flags = _static_safety_flags(origin, destination, geometry, elevations_m, weather) + point_flags
 
@@ -594,19 +596,26 @@ def localize_c(plan: dict) -> dict:
     return _localize(plan, _C_PATTERNS)
 
 
-async def _point_hazard_flags(geometry: list[tuple[float, float]]) -> list[dict]:
-    """The Overpass-backed point hazards (unprotected lefts, rail crossings).
+async def _point_hazard_flags(geometry: list[tuple[float, float]], hazard_types: tuple) -> list[dict]:
+    """The Overpass-backed point hazards, each type individually opt-outable
+    (unprotected lefts, unsignaled wide-road crossings, rail crossings).
     Separate from the static flags because the safety-avoidance pass needs
     these BEFORE deciding whether to re-route, and again after. Degrades to
     no-flags when Overpass is down, never to a failed plan."""
     if len(geometry) < 2:
         return []
     cum = cumulative_distances_mi(geometry)
-    left_flags, rail_flags = await asyncio.gather(
-        crossings.unprotected_left_flags(geometry, cum),
-        crossings.rail_crossing_flags(geometry, cum),
-    )
-    return left_flags + rail_flags
+    checks = []
+    if "unprotected_left" in hazard_types:
+        checks.append(crossings.unprotected_left_flags(geometry, cum))
+    if "wide_crossing" in hazard_types:
+        checks.append(crossings.wide_crossing_flags(geometry, cum))
+    if "rail_crossing" in hazard_types:
+        checks.append(crossings.rail_crossing_flags(geometry, cum))
+    if not checks:
+        return []
+    results = await asyncio.gather(*checks)
+    return [f for group in results for f in group]
 
 
 def _static_safety_flags(origin: tuple[float, float], destination: tuple[float, float],

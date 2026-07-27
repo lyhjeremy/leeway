@@ -130,6 +130,115 @@ async def unprotected_left_flags(coords: list[tuple[float, float]], cum: list[fl
     return flags
 
 
+def _seg_intersection(p1, p2, p3, p4):
+    """2D segment intersection in (lon, lat) space. Returns the point or
+    None. Good enough at street scale where degrees are locally planar."""
+    x1, y1 = p1
+    x2, y2 = p2
+    x3, y3 = p3
+    x4, y4 = p4
+    d = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3)
+    if abs(d) < 1e-12:
+        return None
+    t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / d
+    u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / d
+    if 0 <= t <= 1 and 0 <= u <= 1:
+        return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+    return None
+
+
+async def wide_crossing_flags(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
+    """The founding safety ask: crossing a main road (4+ lanes or a
+    primary/trunk artery) straight-through with no traffic signal.
+
+    Mechanics: fetch major-way geometries near the route from OSM, compute
+    real segment intersections with the route polyline, keep crossings where
+    the route passes straight through (little bearing change - a turn onto
+    the road is the unprotected-left detector's job), the two roads actually
+    cross (bearing difference well off parallel), and no signal sits within
+    SIGNAL_RADIUS_M.
+
+    Honest limit: this is 2D - a grade-separated overpass intersects on
+    paper but not on the ground. Crossing ways tagged bridge/tunnel or
+    motorway are excluded, which removes most of those, but a rare false
+    positive is possible; the copy says 'check it' rather than 'gospel'."""
+    step = max(1, len(coords) // MAX_POLY_POINTS)
+    sampled = coords[::step]
+    poly = ",".join(f"{lat:.5f},{lon:.5f}" for lon, lat in sampled)
+    query = (
+        f'[out:json][timeout:30];'
+        f'(way(around:30,{poly})["highway"~"^(primary|trunk|secondary)$"];'
+        f'way(around:30,{poly})["lanes"~"^([4-9]|1[0-9])$"]["highway"];);'
+        f'out tags geom;'
+        f'node(around:30,{poly})["highway"="traffic_signals"];out;'
+    )
+    try:
+        data = await providers.overpass_raw(query)
+    except Exception:
+        return []
+
+    signals: list[tuple[float, float]] = []
+    ways = []
+    for el in data.get("elements", []):
+        if el.get("type") == "node" and el.get("tags", {}).get("highway") == "traffic_signals":
+            signals.append((el["lat"], el["lon"]))
+        elif el.get("type") == "way" and el.get("geometry"):
+            tags = el.get("tags", {})
+            if tags.get("bridge") or tags.get("tunnel") or tags.get("highway") in ("motorway", "motorway_link"):
+                continue
+            ways.append({
+                "name": tags.get("name") or tags.get("ref") or "a main road",
+                "lanes": tags.get("lanes"),
+                "geom": [(g["lon"], g["lat"]) for g in el["geometry"]],
+            })
+
+    flags = []
+    last_mi = -1e9
+    for i in range(len(coords) - 1):
+        if flags and cum[i] - last_mi < DEDUPE_MI:
+            continue
+        a, b = coords[i], coords[i + 1]
+        route_bearing = bearing_deg(a[1], a[0], b[1], b[0])
+        for w in ways:
+            hit = None
+            for j in range(len(w["geom"]) - 1):
+                hit = _seg_intersection(a, b, w["geom"][j], w["geom"][j + 1])
+                if hit:
+                    way_bearing = bearing_deg(w["geom"][j][1], w["geom"][j][0], w["geom"][j + 1][1], w["geom"][j + 1][0])
+                    break
+            if not hit:
+                continue
+            lon, lat = hit
+            # actually crossing, not merging into or running alongside
+            cross_angle = abs(_turn_angle_deg(route_bearing, way_bearing))
+            if cross_angle < 40 or cross_angle > 140:
+                continue
+            # straight-through: the route doesn't bend here (a bend is a turn,
+            # covered by the unprotected-left check)
+            if i > 0:
+                prev_bearing = bearing_deg(coords[i - 1][1], coords[i - 1][0], a[1], a[0])
+                if abs(_turn_angle_deg(prev_bearing, route_bearing)) > 25:
+                    continue
+            if any(haversine_mi(lat, lon, sl, so) < SIGNAL_RADIUS_M * MI_PER_M * 1.5 for sl, so in signals):
+                continue
+            lanes = f"{w['lanes']}-lane " if w["lanes"] else ""
+            flags.append({
+                "kind": "wide_crossing",
+                "description": (
+                    f"Crossing {lanes}{w['name']} at mile {cum[i]:.0f} with no signal - "
+                    "worth a look before you commit to this route."
+                ),
+                "lat": lat,
+                "lon": lon,
+                "mile": round(cum[i], 1),
+            })
+            last_mi = cum[i]
+            break
+        if len(flags) >= 12:
+            break
+    return flags
+
+
 async def rail_crossing_flags(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
     """Rail level crossings on the route itself, from OSM's
     railway=level_crossing nodes within a tight buffer of the polyline."""
