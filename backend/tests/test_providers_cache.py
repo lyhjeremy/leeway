@@ -172,7 +172,7 @@ def test_overpass_all_down_raises_never_pretends_empty(counting_network, no_slee
     FailoverClient.calls = []
     with pytest.raises(httpx.HTTPError):
         run(providers.overpass_raw("[out:json];node(43);out;"))
-    assert len(FailoverClient.calls) == 4  # every attempt across both instances
+    assert len(FailoverClient.calls) == 3  # every attempt across both instances
 
 
 def test_identical_station_searches_hit_network_once(counting_network):

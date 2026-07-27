@@ -2,6 +2,25 @@ import type { ChargerFilter, GeocodeResult, LatLon, PlanResponse, RouteAlt, Safe
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://leeway-api.onrender.com'
 
+// Render's proxy already cuts any request at ~100s with a 502, so this
+// backstop only fires on connection-level hangs the proxy never sees.
+// A slow plan is legitimate (ORS per-minute rate limits back off up to
+// 30s per leg), so it stays generous rather than snappy.
+const PLAN_TIMEOUT_MS = 115_000
+
+async function fetchOrTimeout(url: string, init: RequestInit, timeoutMs: number, what: string): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
+  } catch (e) {
+    // Keep TypeError ("Failed to fetch") intact - App.tsx translates it to
+    // its own "backend may be waking up" copy.
+    if (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+      throw new Error(`${what} took too long and got cut off - try again in a little while.`)
+    }
+    throw e
+  }
+}
+
 export async function geocode(query: string): Promise<GeocodeResult[]> {
   const res = await fetch(`${API_BASE}/api/geocode?q=${encodeURIComponent(query)}`)
   if (!res.ok) throw new Error(`geocode failed: ${res.status}`)
@@ -38,7 +57,7 @@ export async function planTrip(params: {
   avoidFerries?: boolean
   calibrationFactor?: number
 }): Promise<PlanResponse> {
-  const res = await fetch(`${API_BASE}/api/plan`, {
+  const res = await fetchOrTimeout(`${API_BASE}/api/plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -70,8 +89,13 @@ export async function planTrip(params: {
       avoid_ferries: params.avoidFerries ?? false,
       calibration_factor: params.calibrationFactor ?? 1.0,
     }),
-  })
+  }, PLAN_TIMEOUT_MS, 'Planning')
   if (!res.ok) {
+    // 502/504 come from Render's proxy giving up on a slow plan, not from
+    // the planner itself - a retry usually lands once caches are warm.
+    if (res.status === 502 || res.status === 504) {
+      throw new Error('Planning took too long and got cut off - try again in a little while.')
+    }
     const body = await res.json().catch(() => ({}))
     // FastAPI validation errors send detail as a list of objects, not a string
     const detail = typeof body.detail === 'string' ? body.detail : null
@@ -87,7 +111,7 @@ export async function fetchRoutes(
   avoidHighways: boolean,
   avoidFerries = false,
 ): Promise<RouteAlt[]> {
-  const res = await fetch(`${API_BASE}/api/routes`, {
+  const res = await fetchOrTimeout(`${API_BASE}/api/routes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -97,18 +121,18 @@ export async function fetchRoutes(
       avoid_highways: avoidHighways,
       avoid_ferries: avoidFerries,
     }),
-  })
+  }, PLAN_TIMEOUT_MS, 'Finding routes')
   if (!res.ok) throw new Error(`routes failed: ${res.status}`)
   const data = await res.json()
   return data.routes
 }
 
 export async function voiceSearch(query: string, origin: LatLon, destination: LatLon): Promise<VoiceSearchResponse> {
-  const res = await fetch(`${API_BASE}/api/voice-search`, {
+  const res = await fetchOrTimeout(`${API_BASE}/api/voice-search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, origin, destination }),
-  })
+  }, PLAN_TIMEOUT_MS, 'That search')
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.detail ?? `voice search failed: ${res.status}`)

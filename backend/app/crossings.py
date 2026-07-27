@@ -120,7 +120,9 @@ async def unprotected_left_flags(coords: list[tuple[float, float]], cum: list[fl
     # Way geometry (not just centers) so each turn can compare its incoming
     # direction against the major way's direction - see
     # TURN_FROM_ROAD_PARALLEL_DEG for why that distinction matters.
-    query = f"[out:json][timeout:25];({''.join(node_clauses)});out;({''.join(way_clauses)});out tags geom;"
+    # Server-side timeout stays under the 20s httpx read timeout in
+    # providers.overpass_raw, so the server gives up before we stop listening.
+    query = f"[out:json][timeout:18];({''.join(node_clauses)});out;({''.join(way_clauses)});out tags geom;"
 
     try:
         data = await providers.overpass_raw(query)
@@ -212,7 +214,7 @@ async def wide_crossing_flags(coords: list[tuple[float, float]], cum: list[float
     sampled = coords[::step]
     poly = ",".join(f"{lat:.5f},{lon:.5f}" for lon, lat in sampled)
     query = (
-        f'[out:json][timeout:30];'
+        f'[out:json][timeout:18];'
         f'(way(around:30,{poly})["highway"~"^(primary|trunk|secondary)$"];'
         f'way(around:30,{poly})["lanes"~"^([4-9]|1[0-9])$"]["highway"];);'
         f'out tags geom;'
@@ -344,7 +346,7 @@ async def rail_crossing_flags(coords: list[tuple[float, float]], cum: list[float
     step = max(1, len(coords) // MAX_POLY_POINTS)
     sampled = coords[::step]
     poly = ",".join(f"{lat:.5f},{lon:.5f}" for lon, lat in sampled)
-    query = f'[out:json][timeout:25];node(around:{RAIL_BUFFER_M},{poly})["railway"="level_crossing"];out;'
+    query = f'[out:json][timeout:18];node(around:{RAIL_BUFFER_M},{poly})["railway"="level_crossing"];out;'
 
     try:
         data = await providers.overpass_raw(query)

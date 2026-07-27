@@ -543,20 +543,23 @@ async def caltrans_closures() -> list[dict]:
 
 async def overpass_raw(query: str) -> dict:
     """Run any Overpass QL query with retries ACROSS instances - the shared
-    community servers fail in two distinct ways, both seen in production:
-    retryable HTTP statuses (406/429/503/504) and outright connection
-    failures ("all connection attempts failed"), which the old loop didn't
-    catch at all. Each attempt rotates to the next instance. Real responses
-    are cached; exhausting every attempt RAISES rather than returning an
-    empty result - "couldn't ask" must never masquerade as "nothing there"
-    (callers that prefer degrading, like the safety flags, catch it)."""
+    community servers fail in THREE distinct ways, all seen in production:
+    retryable HTTP statuses (406/429/503/504), outright connection failures
+    ("all connection attempts failed"), and - worst - a mirror that accepts
+    nothing and just hangs (kumi.systems did this for a full day, holding
+    every plan for 50-100s until httpx's timeout fired). Hence the tight
+    connect timeout: a down-hard mirror must cost 5s, not 30. Each attempt
+    rotates to the next instance. Real responses are cached; exhausting
+    every attempt RAISES rather than returning an empty result - "couldn't
+    ask" must never masquerade as "nothing there" (callers that prefer
+    degrading, like the safety flags, catch it)."""
     cached = _overpass_cache.get(query)
     if cached is not None:
         return cached
     headers = {"User-Agent": "Leeway-EV-Trip-Planner/0.1 (github.com/lyhjeremy/leeway)"}
     last_error: Exception | None = None
-    async with httpx.AsyncClient(timeout=30) as client:
-        for attempt in range(4):
+    async with httpx.AsyncClient(timeout=httpx.Timeout(20, connect=5)) as client:
+        for attempt in range(3):
             url = OVERPASS_INSTANCES[attempt % len(OVERPASS_INSTANCES)]
             try:
                 resp = await client.post(url, data={"data": query}, headers=headers)
@@ -565,7 +568,7 @@ async def overpass_raw(query: str) -> dict:
                 last_error = e
                 await asyncio.sleep(1 + attempt)
                 continue
-            if resp.status_code in (406, 429, 503, 504) and attempt < 3:
+            if resp.status_code in (406, 429, 503, 504) and attempt < 2:
                 last_error = httpx.HTTPStatusError(
                     f"overpass {resp.status_code}", request=resp.request, response=resp,
                 )

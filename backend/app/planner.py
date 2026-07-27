@@ -158,6 +158,12 @@ class RateLimited(Exception):
 
 _RETRY_DELAYS_S = [2, 8, 20]
 
+# Longest any single Overpass-backed hazard check may hold up a plan.
+# Generous enough for a heavy around-polyline query on a healthy server
+# (~2-8s typical), small enough that a bad Overpass day costs one wait,
+# not a 100s hang that Render's proxy then kills with a 502.
+POINT_HAZARD_BUDGET_S = 20
+
 
 async def _safe_directions(origin, destination, avoid_tolls, avoid_highways, avoid_polygons=None, avoid_ferries=False):
     """None on a real ORS 404 (genuinely no route between these two points
@@ -693,7 +699,19 @@ async def _point_hazard_flags(geometry: list[tuple[float, float]], hazard_types:
         checks.append(crossings.lane_closure_flags(geometry, cum, departure_epoch))
     if not checks:
         return []
-    results = await asyncio.gather(*checks)
+
+    # Hard ceiling per check: the flags are a bonus layer the plan must
+    # never wait on. overpass_raw already bounds each attempt, but its full
+    # retry chain across a struggling primary and a hanging mirror can still
+    # add up to a minute (seen live: 50-100s plans that were 100% Overpass
+    # retries) - past the budget, that check degrades to no flags.
+    async def bounded(check):
+        try:
+            return await asyncio.wait_for(check, POINT_HAZARD_BUDGET_S)
+        except asyncio.TimeoutError:
+            return []
+
+    results = await asyncio.gather(*(bounded(c) for c in checks))
     return [f for group in results for f in group]
 
 
