@@ -1514,14 +1514,16 @@ input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
 }
 
 /* The hop line: how far and how long the drive INTO the row's stop is.
-   Muted and mono so the numbers scan as waypoints on the rail, not as
-   part of the stop's own facts. */
+   Mono so the numbers scan as waypoints on the rail - and full-contrast,
+   full-size type: how far to the next charger is decision-making
+   information, not a footnote. */
 .leg-hop,
 .trip-card-hop {
   font-family: var(--mono);
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 3px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
 }
 
 .native .accuracy-page {

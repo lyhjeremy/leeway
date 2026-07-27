@@ -880,9 +880,9 @@ function Planner() {
   ).slice(0, Math.max(0, 3 - shownRecents.length))
 
   // Tells you the collapsed options section is hiding something you set.
-  // Stop mode, charger filter, and safety mode are always visible now, so
-  // they don't count as hidden.
+  // Stop mode and charger filter are always visible, so they don't count.
   const changedOptions = [
+    safetyMode !== 'flag_only',
     avoidTolls,
     avoidHighways,
     waypoints.some(Boolean),
@@ -1051,6 +1051,16 @@ function Planner() {
           </div>
 
           <div>
+            <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setShowOptions((v) => !v)}>
+              {showOptions
+                ? 'fewer options ▾'
+                : changedOptions > 0
+                  ? `more options (${changedOptions} set) ▸`
+                  : 'more options ▸'}
+            </button>
+            {showOptions && (
+              <div className="options">
+          <div>
             <div className="row-label">Hazard detours</div>
             <div className="seg">
               {SAFETY_MODES.map((m) => (
@@ -1064,18 +1074,28 @@ function Planner() {
                 ? 'Checked hazards get flagged on the map, route unchanged.'
                 : `Reroutes around checked hazards when the detour adds ${safetyMode === 'avoid_quick' ? '3' : '10'} minutes or less.`}
             </div>
+            <div className="toggles" style={{ marginTop: 10 }}>
+              {(
+                [
+                  ['unprotected_left', 'Unprotected left turns'],
+                  ['wide_crossing', 'Crossing 4+ lane roads without a signal'],
+                  ['rail_crossing', 'Rail crossings'],
+                  ['lane_closure', 'Construction / lane closures (Caltrans)'],
+                ] as [string, string][]
+              ).map(([key, label]) => (
+                <label className="tog" key={key}>
+                  <span>{label}</span>
+                  <input
+                    type="checkbox"
+                    className="switch"
+                    checked={hazardTypes[key]}
+                    onChange={(e) => setHazardTypes({ ...hazardTypes, [key]: e.target.checked })}
+                  />
+                </label>
+              ))}
+            </div>
           </div>
 
-          <div>
-            <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setShowOptions((v) => !v)}>
-              {showOptions
-                ? 'fewer options ▾'
-                : changedOptions > 0
-                  ? `more options (${changedOptions} set) ▸`
-                  : 'more options ▸'}
-            </button>
-            {showOptions && (
-              <div className="options">
           <div>
             <div className="row-label">Charger networks</div>
             <div className="recents" style={{ marginTop: 8 }}>
@@ -1104,29 +1124,6 @@ function Planner() {
             )}
           </div>
 
-          <div>
-            <div className="row-label">Hazards to check</div>
-            <div className="toggles" style={{ marginTop: 10 }}>
-              {(
-                [
-                  ['unprotected_left', 'Unprotected left turns'],
-                  ['wide_crossing', 'Crossing 4+ lane roads without a signal'],
-                  ['rail_crossing', 'Rail crossings'],
-                  ['lane_closure', 'Construction / lane closures (Caltrans)'],
-                ] as [string, string][]
-              ).map(([key, label]) => (
-                <label className="tog" key={key}>
-                  <span>{label}</span>
-                  <input
-                    type="checkbox"
-                    className="switch"
-                    checked={hazardTypes[key]}
-                    onChange={(e) => setHazardTypes({ ...hazardTypes, [key]: e.target.checked })}
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
 
           <div className="toggles">
             <label className="tog">
@@ -1445,6 +1442,10 @@ function Planner() {
                 <div className="sub">
                   {dist(plan.distance_mi)} · {plan.stops.length} stop{plan.stops.length === 1 ? '' : 's'} ·{' '}
                   {Math.floor(plan.duration_min / 60)} h {plan.duration_min % 60} min total
+                  {(() => {
+                    const chargeMin = plan.stops.reduce((a, s) => a + (s.charge_time_min ?? 0), 0)
+                    return chargeMin > 0 ? ` (incl. ~${chargeMin} min charging)` : ''
+                  })()}
                 </div>
                 {plan.weather && <div className="sub">Range adjusted for {plan.weather.summary}</div>}
                 {plan.calibration_factor != null && plan.calibration_factor !== 1 && calibration && (
