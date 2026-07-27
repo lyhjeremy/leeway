@@ -305,6 +305,10 @@ function Planner() {
           : 'https://tiles.openfreemap.org/styles/liberty',
       center: [-120.5, 36.2],
       zoom: 5.6,
+      // Explicit, not implicit: render at the device's real pixel density -
+      // a phone at DPR 3 rendering at a stale/lower ratio is exactly the
+      // "map looks low resolution" report.
+      pixelRatio: window.devicePixelRatio || 1,
       // Collapses the attribution to an (i) button - the full line wrapped
       // to two rows on a 320px screen and covered a third of the map.
       attributionControl: { compact: true },
@@ -317,7 +321,18 @@ function Planner() {
     if (document.documentElement.dataset.theme === 'dark') applyNightRoadContrast(map)
     mapRef.current = map
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__leewayMap = map
-    return () => map.remove()
+    // A late resize nudge plus one on orientation change: if the canvas was
+    // sized before the stacked-layout CSS settled (fonts, dvh, URL-bar
+    // collapse), the buffer stays stale and the map renders stretched and
+    // blurry on phones.
+    const settle = window.setTimeout(() => map.resize(), 600)
+    const onOrient = () => window.setTimeout(() => map.resize(), 250)
+    window.addEventListener('orientationchange', onOrient)
+    return () => {
+      window.clearTimeout(settle)
+      window.removeEventListener('orientationchange', onOrient)
+      map.remove()
+    }
   }, [])
 
   useEffect(() => {

@@ -320,8 +320,32 @@
   color: var(--ink2);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
   /* The bar itself spans the whole gap between panels, but a results
-     dropdown that wide reads badly - keep it search-box sized. */
+     dropdown that wide reads badly - keep it search-box sized. Long result
+     lists scroll inside the chip instead of burying the map. */
   max-width: 480px;
+  max-height: min(52vh, 440px);
+  overflow-y: auto;
+}
+
+.voice-chip-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.voice-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 0 2px;
+  flex: none;
+}
+
+.voice-close:hover {
+  color: var(--ink);
 }
 
 .voice-chip-error {
@@ -1426,6 +1450,9 @@ input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
     right: 16px;
     width: auto;
     min-width: 0;
+    /* Above the chip row: on a phone the results dropdown can reach the
+       bottom of the taller map, and the chips were drawing through it. */
+    z-index: 7;
   }
 
   /* Stacked layout scrolls the whole page, not the panel - a sticky CTA
@@ -1452,11 +1479,14 @@ input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
   /* Sizing goes on .map-wrap (the actual flex child of .app-body) - the old
      rules targeted .map, which is absolutely positioned inside it, so the
      42vh height was really coming from an accidental 50/50 flex split.
-     min() keeps landscape phones usable: 240px of map on a 375px-tall
-     screen left a 79px sliver for every control. */
+     The map owns most of the phone screen (Jeremy's ask: >70%); everything
+     else is one scroll away. dvh where supported so the collapsing Safari
+     URL bar doesn't leave a dead strip. min() keeps landscape phones
+     usable: 240px of map on a 375px-tall screen left a 79px sliver. */
   .map-wrap {
     flex: none;
-    height: 42vh;
+    height: 74vh;
+    height: 74dvh;
     min-height: min(240px, 45vh);
   }
 

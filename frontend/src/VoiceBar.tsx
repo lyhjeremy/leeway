@@ -96,7 +96,12 @@ export default function VoiceBar({ origin, destination, units, onAddStop }: Prop
       {error && <div className="voice-chip voice-chip-error">{error}</div>}
       {result && (
         <div className="voice-chip">
-          <div className="voice-query">“{text}”</div>
+          <div className="voice-chip-head">
+            <div className="voice-query">“{text}”</div>
+            <button className="voice-close" onClick={() => setResult(null)} aria-label="Hide results">
+              ✕
+            </button>
+          </div>
           {result.note && <div className="voice-note">{result.note}</div>}
           {result.results.length === 0 && !result.note && <div className="voice-note">No matches found near the route.</div>}
           {result.results.map((r, i) => (
@@ -113,12 +118,15 @@ export default function VoiceBar({ origin, destination, units, onAddStop }: Prop
               </div>
               <button
                 className="link-btn"
-                onClick={() =>
+                onClick={() => {
                   // Middle dot, not a comma: waypoint titles get trimmed at
                   // the first comma for display, which would strip the
                   // address right back off.
                   onAddStop(r.lat, r.lon, r.address ? `${r.name} · ${r.address.split(',')[0]}` : r.name)
-                }
+                  // The stop is chosen - clear the results so the map (and
+                  // the replanned route) is visible again.
+                  setResult(null)
+                }}
               >
                 add
               </button>
