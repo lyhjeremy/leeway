@@ -1550,11 +1550,12 @@ input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
    divider that separates them from the pane they control. */
 .options-tabs {
   display: flex;
-  gap: 4px;
   border-bottom: 2px solid var(--hair);
 }
 
 .options-tabs button {
+  flex: 1 1 0; /* four equal quarters, underline spans the full quarter */
+  text-align: center;
   background: none;
   border: none;
   cursor: pointer;
@@ -1562,7 +1563,7 @@ input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
   font-size: 14.5px;
   font-weight: 600;
   color: var(--muted);
-  padding: 7px 10px 9px;
+  padding: 7px 0 9px;
   margin-bottom: -2px;
   border-bottom: 2.5px solid transparent;
 }
