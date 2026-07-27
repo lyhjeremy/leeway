@@ -19,11 +19,20 @@ repo is the codebase only).
   slice of trip-wide climb data called I-5's Grapevine "reachable" when a
   real per-leg check proved it wasn't — every candidate stop is verified
   with a real routing call before it's accepted).
-- Adjusts range for live weather (temperature, headwind) at plan time.
-- Flags steep descents and sun glare along the route, with more safety
-  flags planned.
+- Adjusts range for live weather (temperature, headwind), passenger and
+  luggage load, and an optional manual temperature.
+- Safety flags, each its own switch: unprotected left turns, unsignaled
+  crossings of 4+ lane roads, and rail crossings (all from real OSM
+  data), plus steep descents, sun glare, and strong-wind days. A detour
+  budget (3 or 10 minutes) reroutes around point hazards when the cost
+  fits.
+- A route editor in the Google style: up to three stops between start and
+  destination, searchable, drag-to-reorder in any direction, with route
+  alternatives (I-5 vs 101 vs 99) to compare and pick.
 - Finds stops by voice or text ("a Starbucks with a drive-through that
   won't add much time") and verifies each candidate's real detour.
+- Full-bleed map with floating cards, light and dark themes (dark gets
+  its own night basemap), mi/km and °F/°C independently switchable.
 - Logs predicted vs. actual arrival per trip, on your device, and shows
   the running record on the accuracy page.
 - Works as an installable PWA with a screenshot-friendly trip card for
