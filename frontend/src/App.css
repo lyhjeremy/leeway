@@ -377,6 +377,11 @@
 .route-row {
   display: flex;
   align-items: center;
+  /* Fixed height so every row measures identical: the divider border on
+     rows 2+ otherwise adds its pixel to their height, and the rows read
+     as unequal boxes (visibly so at higher display zoom). border-box
+     makes the border draw inside this height instead. */
+  height: 48px;
 }
 
 /* While a drag is live, inputs must not accept the drop - the browser's
