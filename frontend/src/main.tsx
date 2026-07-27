@@ -6,9 +6,9 @@ import { isNative, syncStatusBar } from './native'
 import { loadTheme } from './storage'
 
 // Theme lands on <html> before first paint - a saved choice wins, otherwise
-// the system preference - so dark-mode users never get a white flash.
-document.documentElement.dataset.theme =
-  loadTheme() ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+// LIGHT (changed from system preference 2026-07-27: the light map reads
+// better as the default, and dark stays one tap away on the chip row).
+document.documentElement.dataset.theme = loadTheme() ?? 'light'
 
 // Inside the iOS shell: mark the root so CSS can pad for the notch/home
 // indicator, and color the status bar to match the theme.

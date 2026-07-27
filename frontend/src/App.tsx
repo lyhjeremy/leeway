@@ -145,6 +145,12 @@ function Planner() {
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<maplibregl.Marker[]>([])
   const lastBoundsRef = useRef<maplibregl.LngLatBounds | null>(null)
+  // True once the CURRENT style's 'style.load' has fired. NOT the same as
+  // map.isStyleLoaded(), which stays false until every tile source finishes
+  // loading - on a slow tile CDN that meant "style.load already fired, the
+  // gate says not ready, the once-listener waits forever, route never
+  // draws". Reset on every setStyle.
+  const styleReadyRef = useRef(false)
 
   const [apiStatus, setApiStatus] = useState<'checking' | 'ok' | 'down'>('checking')
   const [units, setUnits] = useState<Units>(() => loadDistUnit())
@@ -281,7 +287,15 @@ function Planner() {
     // every source, layer, and the collapsed-attribution state.
     const map = mapRef.current
     if (!map) return
-    map.setStyle(next === 'dark' ? 'https://tiles.openfreemap.org/styles/fiord' : 'https://tiles.openfreemap.org/styles/liberty')
+    styleReadyRef.current = false
+    // diff: false forces a full style reload. The default diffing path can
+    // morph one style into the other WITHOUT firing 'style.load' - and then
+    // everything queued on that event (the route redraw, the re-triggering
+    // below) starves forever. A full reload is slower but deterministic.
+    map.setStyle(
+      next === 'dark' ? 'https://tiles.openfreemap.org/styles/fiord' : 'https://tiles.openfreemap.org/styles/liberty',
+      { diff: false },
+    )
     // 'style.load', NOT 'styledata': styledata fires while the old style is
     // still being torn down, so a redraw triggered there can land its layers
     // in the doomed style and lose them (seen live as "toggle theme = route,
@@ -319,6 +333,9 @@ function Planner() {
       map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
     })
     if (document.documentElement.dataset.theme === 'dark') applyNightRoadContrast(map)
+    map.on('style.load', () => {
+      styleReadyRef.current = true
+    })
     mapRef.current = map
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__leewayMap = map
     // A late resize nudge plus one on orientation change: if the canvas was
@@ -406,7 +423,7 @@ function Planner() {
         }
       })
     }
-    if (map.isStyleLoaded()) draw()
+    if (styleReadyRef.current) draw()
     else map.once('style.load', draw)
   }, [routeAlts])
 
@@ -421,9 +438,12 @@ function Planner() {
 
     const drawRoute = () => {
       // Colors read at draw time so a theme toggle (which re-triggers this
-      // effect after the style swap) picks the right contrast.
+      // effect after the style swap) picks the right contrast. The route is
+      // a vivid blue over a contrasting casing halo - the old ink-on-gray
+      // line disappeared into the road network on both themes.
       const dark = document.documentElement.dataset.theme === 'dark'
-      const routeColor = dark ? '#e8eadf' : '#2f2e2b'
+      const routeColor = dark ? '#7fb2ff' : '#155ccc'
+      const casingColor = dark ? '#0c1017' : '#ffffff'
       const markerColor = dark ? '#e8eadf' : '#0b0b0b'
       const geojson = {
         type: 'Feature' as const,
@@ -434,28 +454,54 @@ function Planner() {
       if (existing) {
         existing.setData(geojson)
         map.setPaintProperty('route-line', 'line-color', routeColor)
+        map.setPaintProperty('route-casing', 'line-color', casingColor)
       } else {
         map.addSource('route', { type: 'geojson', data: geojson })
+        map.addLayer({
+          id: 'route-casing',
+          type: 'line',
+          source: 'route',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': casingColor, 'line-width': 10 },
+        })
         map.addLayer({
           id: 'route-line',
           type: 'line',
           source: 'route',
-          paint: { 'line-color': routeColor, 'line-width': 5 },
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': routeColor, 'line-width': 5.5 },
         })
       }
 
       markersRef.current.forEach((m) => m.remove())
       markersRef.current = []
 
+      // Small always-visible tags beside the anchor points, so start, stops,
+      // and destination read at a glance without hovering anything.
+      const addTag = (lon: number, lat: number, text: string) => {
+        const el = document.createElement('div')
+        el.className = 'map-tag'
+        el.textContent = text
+        markersRef.current.push(
+          new maplibregl.Marker({ element: el, anchor: 'left', offset: [13, -6] }).setLngLat([lon, lat]).addTo(map),
+        )
+      }
+      const shortName = (title: string) => {
+        const s = title.split(' · ')[0].split(',')[0]
+        return s.length > 18 ? `${s.slice(0, 17)}…` : s
+      }
+
       if (origin) {
         markersRef.current.push(
           new maplibregl.Marker({ color: markerColor }).setLngLat([origin.lon, origin.lat]).addTo(map),
         )
+        addTag(origin.lon, origin.lat, 'Start')
       }
       if (destination) {
         markersRef.current.push(
           new maplibregl.Marker({ color: markerColor }).setLngLat([destination.lon, destination.lat]).addTo(map),
         )
+        addTag(destination.lon, destination.lat, `Arrive ${plan.arrival_pct}%`)
       }
 
       // One shared popup. Hover opens it; leaving the pin starts a short
@@ -568,6 +614,7 @@ function Planner() {
             : 'pin pin-ccs'
         attachPopup(el, stop.lon, stop.lat, () => buildStopContent(stop))
         markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([stop.lon, stop.lat]).addTo(map))
+        addTag(stop.lon, stop.lat, shortName(stop.title))
       }
       for (const flag of plan.safety_flags) {
         if (flag.lat == null || flag.lon == null) continue
@@ -592,12 +639,11 @@ function Planner() {
       map.fitBounds(bounds, { padding: fitPadding(), duration: 500 })
     }
 
-    // 'style.load', not 'load' (fires once per map lifetime - a theme swap
-    // left this waiting forever) and not 'idle' (waits for every TILE, so on
-    // a slow tile fetch the route stayed invisible for 15+ seconds after a
-    // theme swap). style.load fires per setStyle, as soon as layers can be
-    // added.
-    if (map.isStyleLoaded()) drawRoute()
+    // Gate on our own styleReadyRef, not map.isStyleLoaded(): the latter
+    // stays false until every TILE source finishes, so on a slow CDN the
+    // 'style.load' event had already fired while the gate still said no -
+    // and a once-listener for an already-fired event waits forever.
+    if (styleReadyRef.current) drawRoute()
     else map.once('style.load', drawRoute)
   }, [plan, origin, destination])
 
