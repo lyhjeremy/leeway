@@ -22,6 +22,8 @@ protected; a nearby primary/trunk/secondary road (or anything tagged 4+
 lanes) makes it a turn across traffic worth flagging.
 """
 
+import math
+
 from .geo import bearing_deg, haversine_mi
 from . import providers
 
@@ -34,7 +36,29 @@ DEDUPE_MI = 0.25
 RAIL_BUFFER_M = 30
 MAX_POLY_POINTS = 300  # decimation target for the rail-crossing polyline query
 
+# A left turn OFF an artery you're already driving is normal driving - you
+# wait in its turn pocket / center turn lane and cross only the oncoming
+# side. The hazard worth flagging is a left FROM a side street ACROSS the
+# artery: every lane, unsignaled, no refuge. The two are told apart by the
+# angle between the incoming route direction and the major way's own
+# direction at the turn: roughly parallel = you were on it (fine),
+# otherwise = you're cutting across it (flag).
+TURN_FROM_ROAD_PARALLEL_DEG = 35.0
+
 MI_PER_M = 0.000621371
+
+
+def _pt_seg_dist_mi(lat: float, lon: float, a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Distance from a (lat, lon) point to a segment of (lon, lat) points,
+    planar approximation - fine at street scale."""
+    kx = math.cos(math.radians(lat)) * 69.17  # miles per degree of longitude
+    ky = 69.05
+    ax, ay = (a[0] - lon) * kx, (a[1] - lat) * ky
+    bx, by = (b[0] - lon) * kx, (b[1] - lat) * ky
+    dx, dy = bx - ax, by - ay
+    l2 = dx * dx + dy * dy
+    t = 0.0 if l2 == 0 else max(0.0, min(1.0, -(ax * dx + ay * dy) / l2))
+    return math.hypot(ax + t * dx, ay + t * dy)
 
 
 def _turn_angle_deg(b_in: float, b_out: float) -> float:
@@ -68,7 +92,7 @@ def find_sharp_left_turns(coords: list[tuple[float, float]], cum: list[float]) -
         angle = _turn_angle_deg(b_in, b_out)
 
         if angle <= -MIN_LEFT_TURN_DEG and cum[i] - last_kept_mi > DEDUPE_MI:
-            turns.append({"lat": lat_i, "lon": lon_i, "mile": cum[i], "angle_deg": round(-angle)})
+            turns.append({"lat": lat_i, "lon": lon_i, "mile": cum[i], "angle_deg": round(-angle), "bearing_in": b_in})
             last_kept_mi = cum[i]
             if len(turns) >= MAX_TURN_POINTS:
                 break
@@ -76,19 +100,27 @@ def find_sharp_left_turns(coords: list[tuple[float, float]], cum: list[float]) -
 
 
 async def unprotected_left_flags(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
-    """Flags for left turns that cross a bigger road with no traffic signal.
-    One batched Overpass query for all turn points; results are matched back
-    to their turn point locally by distance."""
+    """Flags for left turns that CUT ACROSS a bigger road with no traffic
+    signal. A left off a road you're already on - waiting in its own turn
+    pocket / center turn lane, crossing only oncoming traffic - is normal
+    driving and deliberately NOT flagged (told apart by comparing the
+    incoming route bearing with the major way's bearing at the turn). One
+    batched Overpass query for all turn points; results are matched back to
+    their turn point locally by distance."""
     turns = find_sharp_left_turns(coords, cum)
     if not turns:
         return []
 
-    clauses = []
+    node_clauses = []
+    way_clauses = []
     for t in turns:
-        clauses.append(f'node(around:{SIGNAL_RADIUS_M},{t["lat"]:.5f},{t["lon"]:.5f})["highway"~"^(traffic_signals|stop)$"];')
-        clauses.append(f'way(around:{MAJOR_ROAD_RADIUS_M},{t["lat"]:.5f},{t["lon"]:.5f})["highway"~"^(primary|trunk|secondary)$"];')
-        clauses.append(f'way(around:{MAJOR_ROAD_RADIUS_M},{t["lat"]:.5f},{t["lon"]:.5f})["lanes"~"^([4-9]|1[0-9])$"];')
-    query = f"[out:json][timeout:25];({''.join(clauses)});out tags center;"
+        node_clauses.append(f'node(around:{SIGNAL_RADIUS_M},{t["lat"]:.5f},{t["lon"]:.5f})["highway"~"^(traffic_signals|stop)$"];')
+        way_clauses.append(f'way(around:{MAJOR_ROAD_RADIUS_M},{t["lat"]:.5f},{t["lon"]:.5f})["highway"~"^(primary|trunk|secondary)$"];')
+        way_clauses.append(f'way(around:{MAJOR_ROAD_RADIUS_M},{t["lat"]:.5f},{t["lon"]:.5f})["lanes"~"^([4-9]|1[0-9])$"];')
+    # Way geometry (not just centers) so each turn can compare its incoming
+    # direction against the major way's direction - see
+    # TURN_FROM_ROAD_PARALLEL_DEG for why that distinction matters.
+    query = f"[out:json][timeout:25];({''.join(node_clauses)});out;({''.join(way_clauses)});out tags geom;"
 
     try:
         data = await providers.overpass_raw(query)
@@ -96,28 +128,42 @@ async def unprotected_left_flags(coords: list[tuple[float, float]], cum: list[fl
         return []  # Overpass down - degrade to no flags, never a failed plan
 
     signals: list[tuple[float, float]] = []
-    major_roads: list[tuple[float, float, str]] = []
+    major_ways: list[dict] = []
     for el in data.get("elements", []):
-        lat = el.get("lat") or (el.get("center") or {}).get("lat")
-        lon = el.get("lon") or (el.get("center") or {}).get("lon")
-        if lat is None:
-            continue
         tags = el.get("tags", {})
-        if el["type"] == "node":
-            signals.append((lat, lon))
-        else:
-            name = tags.get("name") or tags.get("ref") or "a bigger road"
-            major_roads.append((lat, lon, name))
+        if el.get("type") == "node" and el.get("lat") is not None:
+            signals.append((el["lat"], el["lon"]))
+        elif el.get("type") == "way" and el.get("geometry"):
+            major_ways.append({
+                "name": tags.get("name") or tags.get("ref") or "a bigger road",
+                "geom": [(g["lon"], g["lat"]) for g in el["geometry"]],
+            })
 
+    max_dist_mi = MAJOR_ROAD_RADIUS_M * MI_PER_M * 2.5
     flags = []
     for t in turns:
         has_signal = any(haversine_mi(t["lat"], t["lon"], la, lo) < SIGNAL_RADIUS_M * MI_PER_M * 1.5 for la, lo in signals)
         if has_signal:
             continue
-        crossed = next(
-            (name for la, lo, name in major_roads if haversine_mi(t["lat"], t["lon"], la, lo) < MAJOR_ROAD_RADIUS_M * MI_PER_M * 2.5),
-            None,
-        )
+        crossed = None
+        for w in major_ways:
+            best_dist, best_bearing = None, None
+            for j in range(len(w["geom"]) - 1):
+                d = _pt_seg_dist_mi(t["lat"], t["lon"], w["geom"][j], w["geom"][j + 1])
+                if best_dist is None or d < best_dist:
+                    a, b = w["geom"][j], w["geom"][j + 1]
+                    best_dist, best_bearing = d, bearing_deg(a[1], a[0], b[1], b[0])
+            if best_dist is None or best_dist > max_dist_mi:
+                continue
+            # Roughly parallel to the incoming route = this is the road being
+            # driven, and the left is out of its own turn pocket / center
+            # lane - normal driving, not a flag. Only a way CUT ACROSS
+            # counts.
+            diff = abs(_turn_angle_deg(t["bearing_in"], best_bearing))
+            if min(diff, 180 - diff) <= TURN_FROM_ROAD_PARALLEL_DEG:
+                continue
+            crossed = w["name"]
+            break
         if crossed is None:
             continue
         flags.append({

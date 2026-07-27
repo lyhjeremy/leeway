@@ -30,14 +30,18 @@ def test_sharp_left_turn_detected_and_right_turn_ignored():
 
 
 def test_unprotected_left_flagged_against_fake_osm(world):
+    """Northbound on a side street, then left across an east-west artery:
+    the incoming direction is perpendicular to the crossed way, so this is
+    a genuine cut-across-every-lane left."""
     coords = _l_shaped_route("left")
     cum = cumulative_distances_mi(coords)
     t = crossings.find_sharp_left_turns(coords, cum)[0]
 
-    # A primary road at the turn, no signal -> flagged
+    # An east-west primary road running through the turn point, no signal
     world.overpass_result = {
         "elements": [
-            {"type": "way", "center": {"lat": t["lat"], "lon": t["lon"]},
+            {"type": "way",
+             "geometry": [{"lat": t["lat"], "lon": t["lon"] - 0.002}, {"lat": t["lat"], "lon": t["lon"] + 0.002}],
              "tags": {"highway": "primary", "name": "Main St"}},
         ]
     }
@@ -50,6 +54,34 @@ def test_unprotected_left_flagged_against_fake_osm(world):
     world.overpass_result["elements"].append(
         {"type": "node", "lat": t["lat"], "lon": t["lon"], "tags": {"highway": "traffic_signals"}}
     )
+    assert run(crossings.unprotected_left_flags(coords, cum)) == []
+
+
+def test_left_off_the_artery_itself_not_flagged(world):
+    """Eastbound ON the artery, then left into a side street: you wait in
+    the artery's own turn pocket and cross only oncoming traffic - normal
+    driving, per the product owner's explicit rule, so no flag even though
+    a major unsignaled way sits at the turn."""
+    coords = [(-118.0, 34.0)]
+    lat, lon = 34.0, -118.0
+    for _ in range(int(0.5 / 0.02)):
+        lat, lon = destination_point(lat, lon, 90, 0.02)  # east along the artery
+        coords.append((lon, lat))
+    for _ in range(int(0.5 / 0.02)):
+        lat, lon = destination_point(lat, lon, 0, 0.02)  # left, due north
+        coords.append((lon, lat))
+    cum = cumulative_distances_mi(coords)
+    t = crossings.find_sharp_left_turns(coords, cum)[0]
+    assert t["angle_deg"] >= 55  # it IS a sharp left
+
+    # The artery runs east-west through the turn - parallel to the approach
+    world.overpass_result = {
+        "elements": [
+            {"type": "way",
+             "geometry": [{"lat": t["lat"], "lon": t["lon"] - 0.002}, {"lat": t["lat"], "lon": t["lon"] + 0.002}],
+             "tags": {"highway": "primary", "name": "Olympic Blvd", "lanes": "8"}},
+        ]
+    }
     assert run(crossings.unprotected_left_flags(coords, cum)) == []
 
 

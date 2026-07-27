@@ -1079,10 +1079,10 @@ function Planner() {
             <div className="toggles" style={{ marginTop: 10 }}>
               {(
                 [
-                  ['unprotected_left', 'Unprotected left turns'],
-                  ['wide_crossing', 'Crossing 4+ lane roads without a signal'],
-                  ['rail_crossing', 'Rail crossings'],
-                  ['lane_closure', 'Construction / lane closures (Caltrans)'],
+                  ['unprotected_left', 'Avoid left turns cutting across big roads'],
+                  ['wide_crossing', 'Avoid crossing 4+ lane roads without a signal'],
+                  ['rail_crossing', 'Avoid rail crossings'],
+                  ['lane_closure', 'Avoid construction / lane closures (Caltrans)'],
                 ] as [string, string][]
               ).map(([key, label]) => (
                 <label className="tog" key={key}>
