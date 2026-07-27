@@ -145,6 +145,7 @@ function Planner() {
     unprotected_left: true,
     wide_crossing: true,
     rail_crossing: true,
+    lane_closure: true,
   })
   const [avoidTolls, setAvoidTolls] = useState(false)
   const [avoidHighways, setAvoidHighways] = useState(false)
@@ -999,6 +1000,7 @@ function Planner() {
                   ['unprotected_left', 'Unprotected left turns'],
                   ['wide_crossing', 'Crossing 4+ lane roads without a signal'],
                   ['rail_crossing', 'Rail crossings'],
+                  ['lane_closure', 'Construction / lane closures (Caltrans)'],
                 ] as [string, string][]
               ).map(([key, label]) => (
                 <label className="tog" key={key}>

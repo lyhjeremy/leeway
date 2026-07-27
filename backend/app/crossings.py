@@ -239,6 +239,52 @@ async def wide_crossing_flags(coords: list[tuple[float, float]], cum: list[float
     return flags
 
 
+CLOSURE_ON_ROUTE_MI = 0.5
+
+
+async def lane_closure_flags(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
+    """Active Caltrans lane/full closures sitting on (or within half a mile
+    of) the route. Statewide feed is cached in providers; here it's just a
+    proximity match against the polyline."""
+    from .geo import cumulative_distances_mi, nearest_route_point  # local import avoids cycles
+
+    try:
+        closures = await providers.caltrans_closures()
+    except Exception:
+        return []
+    if not closures:
+        return []
+
+    flags = []
+    seen_ids: set = set()
+    for c in closures:
+        if c["id"] in seen_ids:
+            continue
+        dist_along, offset = nearest_route_point(coords, cum, c["lat"], c["lon"])
+        if offset > CLOSURE_ON_ROUTE_MI:
+            continue
+        seen_ids.add(c["id"])
+        lanes = ""
+        if c["lanes_closed"] and c["total_lanes"]:
+            lanes = f", lanes {c['lanes_closed']} of {c['total_lanes']} closed"
+        work = f" ({c['work'].lower()})" if c["work"] else ""
+        until = f" until {c['until'].split(' ')[0]}" if c["until"] else ""
+        flags.append({
+            "kind": "lane_closure",
+            "description": (
+                f"Caltrans {c['type'].lower()} closure on {c['route']} {c['direction']} "
+                f"near mile {dist_along:.0f}{lanes}{work}{until}."
+            ),
+            "lat": c["lat"],
+            "lon": c["lon"],
+            "mile": round(dist_along, 1),
+        })
+        if len(flags) >= 10:
+            break
+    flags.sort(key=lambda f: f["mile"])
+    return flags
+
+
 async def rail_crossing_flags(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
     """Rail level crossings on the route itself, from OSM's
     railway=level_crossing nodes within a tight buffer of the polyline."""

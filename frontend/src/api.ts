@@ -56,7 +56,7 @@ export async function planTrip(params: {
       temp_override_f: params.tempOverrideF ?? null,
       units: params.units ?? 'mi',
       temp_unit: params.tempUnit ?? 'F',
-      hazard_types: params.hazardTypes ?? ['unprotected_left', 'wide_crossing', 'rail_crossing'],
+      hazard_types: params.hazardTypes ?? ['unprotected_left', 'wide_crossing', 'rail_crossing', 'lane_closure'],
     }),
   })
   if (!res.ok) {

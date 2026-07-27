@@ -207,7 +207,7 @@ async def plan_trip(
     passengers: int = 0,  # beyond the driver
     suitcases: int = 0,
     temp_override_f: float | None = None,  # trust the driver's number over the midpoint forecast
-    hazard_types: tuple = ("unprotected_left", "wide_crossing", "rail_crossing"),
+    hazard_types: tuple = ("unprotected_left", "wide_crossing", "rail_crossing", "lane_closure"),
 ) -> dict:
     if waypoints:
         # Each waypoint splits the trip into independently-planned sub-trips
@@ -612,6 +612,8 @@ async def _point_hazard_flags(geometry: list[tuple[float, float]], hazard_types:
         checks.append(crossings.wide_crossing_flags(geometry, cum))
     if "rail_crossing" in hazard_types:
         checks.append(crossings.rail_crossing_flags(geometry, cum))
+    if "lane_closure" in hazard_types:
+        checks.append(crossings.lane_closure_flags(geometry, cum))
     if not checks:
         return []
     results = await asyncio.gather(*checks)

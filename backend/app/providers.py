@@ -306,6 +306,71 @@ async def directions_alternatives(
     ]
 
 
+CALTRANS_DISTRICTS = [f"d{i}" for i in range(1, 13)]
+CALTRANS_TTL_S = 1800  # closures change on hour scales; don't hammer 12 feeds per plan
+_caltrans_cache: dict = {"ts": 0.0, "closures": []}
+
+
+async def caltrans_closures() -> list[dict]:
+    """Active lane/full closures statewide from Caltrans' free district feeds
+    (cwwp2.dot.ca.gov LCS). Cached for CALTRANS_TTL_S; a district feed that
+    fails just contributes nothing - missing a closure flag beats failing
+    the plan."""
+    import time
+
+    now = time.time()
+    if now - _caltrans_cache["ts"] < CALTRANS_TTL_S:
+        return _caltrans_cache["closures"]
+
+    out = []
+    async with httpx.AsyncClient(timeout=12) as client:
+        district_urls = [
+            f"https://cwwp2.dot.ca.gov/data/d{i}/lcs/lcsStatusD{i:02d}.json" for i in range(1, 13)
+        ]
+
+        async def fetch(url: str) -> list[dict]:
+            try:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                return resp.json().get("data", [])
+            except Exception:
+                return []
+
+        results = await asyncio.gather(*(fetch(u) for u in district_urls))
+
+    for records in results:
+        for rec in records:
+            lcs = rec.get("lcs", {})
+            closure = lcs.get("closure", {})
+            ts = closure.get("closureTimestamp", {})
+            loc = lcs.get("location", {}).get("begin", {})
+            try:
+                start = float(ts.get("closureStartEpoch") or 0)
+                end = float(ts.get("closureEndEpoch") or 0)
+                lat = float(loc.get("beginLatitude"))
+                lon = float(loc.get("beginLongitude"))
+            except (TypeError, ValueError):
+                continue
+            if not (start <= now <= end):
+                continue
+            out.append({
+                "id": closure.get("closureID", ""),
+                "lat": lat,
+                "lon": lon,
+                "route": loc.get("beginRoute", "the highway"),
+                "direction": lcs.get("location", {}).get("travelFlowDirection", ""),
+                "type": closure.get("typeOfClosure", "Lane"),
+                "work": closure.get("typeOfWork", ""),
+                "lanes_closed": closure.get("lanesClosed", ""),
+                "total_lanes": closure.get("totalExistingLanes", ""),
+                "until": f"{ts.get('closureEndDate', '')} {ts.get('closureEndTime', '')}".strip(),
+            })
+
+    _caltrans_cache["ts"] = now
+    _caltrans_cache["closures"] = out
+    return out
+
+
 async def overpass_raw(query: str) -> dict:
     """Run any Overpass QL query with the retry loop this flaky public
     instance needs (see search_overpass's docstring for the evidence).
