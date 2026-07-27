@@ -180,3 +180,78 @@ def test_lane_closure_only_when_active_and_on_route(world):
 
     # With a departure time after the closure ends, nothing is active
     assert run(crossings.lane_closure_flags(coords, cum, at_epoch=now + 7200)) == []
+
+
+# --- nationwide: long routes must not dilute the hazard search -------------
+
+def _long_route(miles: float, per_mile: int = 2):
+    """A straight west-to-east polyline of the given length."""
+    n = int(miles * per_mile)
+    coords = [(-118.0 + (i / per_mile) / 54.6, 34.0) for i in range(n)]
+    return coords, crossings_cum(coords)
+
+
+def crossings_cum(coords):
+    from app.geo import cumulative_distances_mi
+    return cumulative_distances_mi(coords)
+
+
+def test_short_route_still_searches_end_to_end():
+    """Under the threshold nothing changes: one polyline, whole route."""
+    coords, cum = _long_route(20)
+    polys = crossings._search_polylines(coords, cum, [0.0, cum[-1]])
+    assert len(polys) == 1
+    assert len(polys[0]) == len(coords)
+
+
+def test_long_route_searches_only_around_anchors():
+    """A 600-mile trip must not spread its point budget over 600 miles - at
+    that spacing the polyline Overpass sees cuts corners by miles and the
+    empty result reads as 'safe'."""
+    coords, cum = _long_route(600)
+    anchors = [0.0, 150.0, 300.0, 450.0, cum[-1]]
+    polys = crossings._search_polylines(coords, cum, anchors)
+
+    assert len(polys) == len(anchors), "one search corridor per anchor"
+    searched = sum(
+        crossings_cum(p)[-1] for p in polys if len(p) > 1
+    )
+    assert searched < 120, f"searched {searched:.0f} mi of corridor, expected ~60"
+
+    # every point sits within a window of some anchor
+    for poly in polys:
+        for lon, _lat in poly:
+            mile = min(cum[i] for i, c in enumerate(coords) if c[0] == lon)
+            assert any(abs(mile - a) <= crossings.HAZARD_WINDOW_MI + 1 for a in anchors)
+
+
+def test_windows_merge_when_stops_are_close_together():
+    coords, cum = _long_route(600)
+    merged = crossings._windows(cum, [100.0, 104.0, 400.0])
+    assert len(merged) == 2, merged
+    assert merged[0][0] < 100 and merged[0][1] > 104
+
+
+def test_each_window_gets_its_own_around_clause():
+    """Concatenating windows into one coordinate list would make Overpass
+    draw a search corridor straight across the gap between them."""
+    coords, cum = _long_route(600)
+    polys = crossings._search_polylines(coords, cum, [0.0, 300.0, cum[-1]])
+    clause = crossings._around_clauses(polys, 30, '["railway"="level_crossing"]')
+    assert clause.count("(around:30,") == len(polys)
+
+
+def test_turn_search_is_not_all_spent_in_the_first_city():
+    """MAX_TURN_POINTS is taken in route order, so without windowing every
+    slot goes to the origin metro and the rest of the drive is never seen."""
+    coords, cum = _long_route(600, per_mile=6)
+    # a sharp left every half mile for the first 40 miles
+    for i in range(0, 240, 3):
+        coords[i] = (coords[i][0], coords[i][1] + 0.004)
+    cum = crossings_cum(coords)
+    anchors = [0.0, cum[-1]]
+    windowed = crossings.find_sharp_left_turns(coords, cum, anchors)
+    assert all(
+        t["mile"] <= crossings.HAZARD_WINDOW_MI + 1 or t["mile"] >= cum[-1] - crossings.HAZARD_WINDOW_MI - 1
+        for t in windowed
+    ), "turns found outside the anchor windows"

@@ -31,9 +31,24 @@ OVERPASS_INSTANCES = [
     "https://overpass.kumi.systems/api/interpreter",
 ]
 
-# California bounding box - biases geocoding results since this product is
-# CA-only for now, per the product plan.
-CA_BBOX = {"min_lon": -124.48, "min_lat": 32.53, "max_lon": -114.13, "max_lat": 42.01}
+# Mainland USA. Geocoding is constrained to this box AND to country=USA:
+# the country filter alone would pull in Alaska, Hawaii and the territories,
+# none of which this product can route between.
+US_BBOX = {"min_lon": -124.85, "min_lat": 24.4, "max_lon": -66.85, "max_lat": 49.45}
+
+# Caltrans publishes lane closures for California only, and there is no
+# national equivalent to fall back on. Routes that never enter the state skip
+# that lookup entirely rather than fetch 12 district feeds for nothing.
+CALIFORNIA_BBOX = {"min_lon": -124.48, "min_lat": 32.53, "max_lon": -114.13, "max_lat": 42.01}
+
+
+def touches_california(coords: list[tuple[float, float]]) -> bool:
+    """coords are (lon, lat), as everywhere else in this codebase."""
+    return any(
+        CALIFORNIA_BBOX["min_lon"] <= lon <= CALIFORNIA_BBOX["max_lon"]
+        and CALIFORNIA_BBOX["min_lat"] <= lat <= CALIFORNIA_BBOX["max_lat"]
+        for lon, lat in coords
+    )
 
 
 class _TTLCache:
@@ -141,14 +156,15 @@ async def _census_address_match(query: str) -> dict | None:
     geocoder - it INTERPOLATES numbers along TIGER street ranges, which the
     hosted ORS/Pelias geocoder doesn't do (confirmed live: '555 Levering Ave'
     only ever came back street-level from Pelias while Census placed it).
-    US-only, which is fine for a California-only product. Returns
-    {label, lat, lon} or None; any failure means None - Pelias results stand."""
-    address = query if "," in query else f"{query}, CA"
+    US-wide, which is all this product covers. The query goes through as
+    typed: with no state to assume, appending one would send "12 Main St" to
+    the wrong half of the country. Returns {label, lat, lon} or None; any
+    failure means None - Pelias results stand."""
     try:
         async with httpx.AsyncClient(timeout=8) as client:
             resp = await client.get(
                 "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress",
-                params={"address": address, "benchmark": "Public_AR_Current", "format": "json"},
+                params={"address": query, "benchmark": "Public_AR_Current", "format": "json"},
             )
             resp.raise_for_status()
             matches = resp.json().get("result", {}).get("addressMatches", [])
@@ -157,11 +173,22 @@ async def _census_address_match(query: str) -> dict | None:
     if not matches:
         return None
     m = matches[0]
-    # "555 LEVERING AVE, LOS ANGELES, CA, 90024" -> "555 Levering Ave, Los Angeles, CA 90024"
-    label = m.get("matchedAddress", "").title()
-    label = re.sub(r"\bCa\b", "CA", label)
-    label = re.sub(r", CA, (\d{5})", r", CA \1", label)
-    return {"label": label, "lat": m["coordinates"]["y"], "lon": m["coordinates"]["x"]}
+    return {
+        "label": _tidy_census_label(m.get("matchedAddress", "")),
+        "lat": m["coordinates"]["y"],
+        "lon": m["coordinates"]["x"],
+    }
+
+
+def _tidy_census_label(raw: str) -> str:
+    """"555 LEVERING AVE, LOS ANGELES, CA, 90024" -> "555 Levering Ave, Los
+    Angeles, CA 90024". Census always returns street, city, state, ZIP, so the
+    state is the second-to-last field; title() lowercases it and has to be put
+    back. Keyed on position rather than on a list of state names."""
+    parts = [p.strip() for p in raw.title().split(",") if p.strip()]
+    if len(parts) >= 2 and len(parts[-2]) == 2 and parts[-2].isalpha():
+        parts[-2:] = [f"{parts[-2].upper()} {parts[-1]}"]
+    return ", ".join(parts)
 
 
 async def geocode(query: str) -> list[dict]:
@@ -176,10 +203,11 @@ async def geocode(query: str) -> list[dict]:
             params={
                 "api_key": ORS_API_KEY,
                 "text": query,
-                "boundary.rect.min_lon": CA_BBOX["min_lon"],
-                "boundary.rect.min_lat": CA_BBOX["min_lat"],
-                "boundary.rect.max_lon": CA_BBOX["max_lon"],
-                "boundary.rect.max_lat": CA_BBOX["max_lat"],
+                "boundary.country": "USA",
+                "boundary.rect.min_lon": US_BBOX["min_lon"],
+                "boundary.rect.min_lat": US_BBOX["min_lat"],
+                "boundary.rect.max_lon": US_BBOX["max_lon"],
+                "boundary.rect.max_lat": US_BBOX["max_lat"],
                 "size": 5,
             },
         )

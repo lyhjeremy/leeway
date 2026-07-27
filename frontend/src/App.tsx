@@ -54,12 +54,12 @@ const SUGGESTED_TRIPS: RecentTrip[] = [
     destination: { label: 'San Francisco, CA', lat: 37.7749, lon: -122.4194 },
   },
   {
-    origin: { label: 'San Diego, CA', lat: 32.7157, lon: -117.1611 },
-    destination: { label: 'Santa Barbara, CA', lat: 34.4208, lon: -119.6982 },
+    origin: { label: 'New York, NY', lat: 40.7128, lon: -74.006 },
+    destination: { label: 'Boston, MA', lat: 42.3601, lon: -71.0589 },
   },
   {
-    origin: { label: 'Sacramento, CA', lat: 38.5816, lon: -121.4944 },
-    destination: { label: 'South Lake Tahoe, CA', lat: 38.9399, lon: -119.9772 },
+    origin: { label: 'Chicago, IL', lat: 41.8781, lon: -87.6298 },
+    destination: { label: 'Detroit, MI', lat: 42.3314, lon: -83.0458 },
   },
 ]
 
@@ -91,6 +91,10 @@ const SAFETY_BUDGET_LABEL: Record<string, string> = {
 // First-visit demo trip - shown pre-filled so the value is visible before
 // anyone types anything. Real coordinates (Culver City -> SF Mission), not
 // geocoded on load, so this renders instantly even before ORS is configured.
+// Mainland USA. The overview screenshots are all framed on this view.
+const US_CENTER: [number, number] = [-98.5, 39.5]
+const US_ZOOM = 3.5
+
 const DEMO_ORIGIN: GeocodeResult = { label: 'Culver City, Los Angeles', lat: 34.0211, lon: -118.3965 }
 const DEMO_DESTINATION: GeocodeResult = { label: 'Mission District, San Francisco', lat: 37.7599, lon: -122.4194 }
 
@@ -271,7 +275,7 @@ function Planner() {
     const map = mapRef.current
     if (!map) return
     if (lastBoundsRef.current) map.fitBounds(lastBoundsRef.current, { padding: fitPadding(), duration: 500 })
-    else map.flyTo({ center: [-120.5, 36.2], zoom: 5.6, duration: 500 })
+    else map.flyTo({ center: US_CENTER, zoom: US_ZOOM, duration: 500 })
   }
 
   // main.tsx already stamped the theme on <html> before first paint.
@@ -320,8 +324,8 @@ function Planner() {
         document.documentElement.dataset.theme === 'dark'
           ? 'https://tiles.openfreemap.org/styles/fiord'
           : 'https://tiles.openfreemap.org/styles/liberty',
-      center: [-120.5, 36.2],
-      zoom: 5.6,
+      center: US_CENTER,
+      zoom: US_ZOOM,
       // Explicit, not implicit: render at the device's real pixel density -
       // a phone at DPR 3 rendering at a stale/lower ratio is exactly the
       // "map looks low resolution" report.
@@ -707,7 +711,7 @@ function Planner() {
         const missing = !o ? originText : destText
         setError(
           missing.trim().length >= 3
-            ? `Couldn't find "${missing}" in California. Try a city or address.`
+            ? `Couldn't find "${missing}". Try a city, or a street address with its state.`
             : 'Enter both a start and a destination.',
         )
         setLoading(false)
@@ -1163,7 +1167,7 @@ function Planner() {
                   ['unprotected_left', 'Avoid left turns cutting across big roads'],
                   ['wide_crossing', 'Avoid crossing 4+ lane roads without a signal'],
                   ['rail_crossing', 'Avoid rail crossings'],
-                  ['lane_closure', 'Avoid construction / lane closures (Caltrans)'],
+                  ['lane_closure', 'Avoid construction / lane closures (California only)'],
                 ] as [string, string][]
               ).map(([key, label]) => (
                 <label className="tog" key={key}>

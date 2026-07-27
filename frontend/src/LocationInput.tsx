@@ -141,7 +141,7 @@ export default function LocationInput({ placeholder, dotClass, value, onChange, 
             <li className="location-empty">Search hiccuped - the backend may be waking up. Try again in a moment.</li>
           )}
           {!searching && !failed && searched && results.length === 0 && (
-            <li className="location-empty">No matches. Leeway covers California for now.</li>
+            <li className="location-empty">No matches. Leeway covers the mainland US.</li>
           )}
         </ul>
       )}

@@ -265,7 +265,8 @@
     <h1>This one takes a detour to dodge a left turn.</h1>
 
     <p class="hero-sub">
-      Leeway plans California road trips around the battery your car has today. Then it spends a budget you set, in minutes, on the hazards
+      Leeway plans road trips across the mainland US around the battery your
+      car has today. Then it spends a budget you set, in minutes, on the hazards
       other planners route you straight through: the
       <strong>unsignaled crossing of a four-lane road</strong>, the
       <strong>left turn with no light</strong>, the
@@ -352,7 +353,7 @@
     </p>
     <figure>
       <img class="shot" src="main-ui.jpg" width="1600" height="870" loading="lazy"
-        alt="The Leeway main screen: a planning panel on the left over a full-screen map of California, with an empty verdict card on the right." />
+        alt="The Leeway main screen: a planning panel on the left over a full-screen map, with an empty verdict card on the right." />
       <figcaption>The planning panel, the map, and the verdict card waiting to be filled.</figcaption>
     </figure>
   </section>
@@ -400,7 +401,7 @@
       Four hazards, each with its own switch: <strong>left turns across big
       roads</strong>, <strong>unsignaled crossings of 4+ lane roads</strong>,
       <strong>rail crossings</strong>, and <strong>active Caltrans
-      construction</strong>. Next to them sits a <strong>detour budget</strong>.
+      construction</strong> (California only). Next to them sits a <strong>detour budget</strong>.
       Set it to +5 minutes and Leeway routes around any flagged spot it can avoid
       for five minutes or less. Anything costlier than that, it warns you about and
       leaves alone.
@@ -653,14 +654,14 @@
     <h2>Where the numbers come from</h2>
     <p>
       Leeway is free, runs on free infrastructure, and has no business model. It
-      covers <strong>California</strong> for now.
+      covers the <strong>mainland US</strong>.
     </p>
     <dl class="specs">
       <div class="spec"><dt>Routing</dt><dd>OpenRouteService, for geometry, duration, and the elevation profile the range math runs on</dd></div>
       <div class="spec"><dt>Chargers</dt><dd>Open Charge Map, for network, connector types, stall counts, power and cost</dd></div>
       <div class="spec"><dt>Weather</dt><dd>Open-Meteo, for live conditions or the hourly forecast up to 7 days out</dd></div>
       <div class="spec"><dt>Hazards</dt><dd>OpenStreetMap via Overpass, for traffic signals, lane counts and rail level crossings</dd></div>
-      <div class="spec"><dt>Closures</dt><dd>Caltrans Lane Closure System, for active statewide construction</dd></div>
+      <div class="spec"><dt>Closures</dt><dd>Caltrans Lane Closure System, for active construction. California only: no other state publishes an equivalent free feed, so the switch does nothing elsewhere</dd></div>
       <div class="spec"><dt>Addresses</dt><dd>The US Census geocoder, for house numbers the primary geocoder misses</dd></div>
       <div class="spec"><dt>Stop search</dt><dd>Gemini, to turn a spoken sentence into a search Leeway can run</dd></div>
       <div class="spec"><dt>Built with</dt><dd>React, TypeScript and MapLibre GL on GitHub Pages; FastAPI on Render; Capacitor for iOS</dd></div>

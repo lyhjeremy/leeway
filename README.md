@@ -6,7 +6,8 @@ Every EV planner finds you a charger. This one will also spend a minute of
 your day driving around the block so you don't have to cross four lanes of
 traffic without a light.
 
-Leeway plans California road trips around the battery your car has today,
+Leeway plans road trips across the mainland US around the battery your car
+has today,
 then spends a detour budget you set, in minutes, on hazards other planners
 route you straight through: unprotected left turns, unsignaled
 crossings of 4+ lane roads, rail level crossings, and live Caltrans
@@ -21,7 +22,8 @@ up, not in this repo — this repo is the codebase only).
 
 - **Hazard-aware rerouting.** Four detectors, each with its own switch:
   unprotected left, unsignaled 4+ lane crossing, rail crossing, Caltrans
-  closure. Behind them sits a detour budget of 5, 10, or 20 minutes.
+  closure (that last one California only). Behind them sits a detour budget
+  of 5, 10, or 20 minutes.
   Anything avoidable inside the budget gets routed around, and the rest is
   flagged. Signals, lane counts and crossings come from OSM geometry;
   closures come from the Caltrans feed.
@@ -89,8 +91,8 @@ backend health at `https://leeway-api.onrender.com/api/health`.
 Data sources: OpenRouteService (routing, geocoding, elevation), Open Charge
 Map (stations), Open-Meteo (weather), Overpass/OSM (POI search), the US
 Census geocoder (exact house numbers Pelias lacks), Caltrans
-LCS (lane closures), Gemini (voice query parsing). Coverage is California
-for now. Successful provider responses are cached in-process (routes 6h,
+LCS (lane closures, California only), Gemini (voice query parsing).
+Coverage is the mainland US. Successful provider responses are cached in-process (routes 6h,
 stations 30min, weather 15min) to stretch the free-tier quotas — the ORS
 daily directions ceiling is the stack's real scarcity, documented at
 roughly 150–200 plans/day.

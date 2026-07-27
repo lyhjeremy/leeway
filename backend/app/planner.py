@@ -22,6 +22,7 @@ never decides feasibility on its own.
 """
 
 import asyncio
+import math
 import re
 from datetime import datetime, timezone
 
@@ -30,7 +31,12 @@ import httpx
 from . import crossings, providers, range_model, safety, sun
 from .geo import bearing_deg, cumulative_distances_mi, haversine_mi, headwind_component_mph, nearest_route_point, point_at_distance
 
-SEARCH_RADII_MI = [15, 30, 50]  # widen if nothing pans out, before giving up
+# Widen if nothing pans out, before giving up. The 75-mile tier exists for
+# the interior West: DC-fast chargers in Nevada, Wyoming and west Texas are
+# routinely further apart than California's 50-mile worst case. It only costs
+# quota when the first three tiers already found nothing, since the loop stops
+# at the first radius that yields a verified candidate.
+SEARCH_RADII_MI = [15, 30, 50, 75]
 STOP_MODE_WINDOW_MI = 20
 MAX_STOPS = 6  # safety cap - if a real trip needs more than this, say so rather than loop forever
 MAX_CANDIDATES_VERIFIED_PER_RADIUS = 8  # real-directions calls are not free API quota
@@ -137,9 +143,14 @@ def _dedupe_by_location(ranked: list[dict]) -> list[dict]:
     being verified back-to-back against the same answer."""
     kept: list[dict] = []
     for c in ranked:
+        # Miles per degree of longitude shrinks toward the poles. The old
+        # constant 55 hardcoded cos(lat) for latitude 37, the middle of
+        # California: it is 12% too tight in south Texas and 19% too loose on
+        # the northern border. Derive it from the candidate instead.
+        mi_per_deg_lon = max(1e-6, 69.17 * math.cos(math.radians(c["lat"])))
         dup = any(
             abs(c["lat"] - k["lat"]) < DEDUPE_RADIUS_MI / 69.0
-            and abs(c["lon"] - k["lon"]) < DEDUPE_RADIUS_MI / 55.0
+            and abs(c["lon"] - k["lon"]) < DEDUPE_RADIUS_MI / mi_per_deg_lon
             for k in kept
         )
         if not dup:
@@ -540,7 +551,8 @@ async def plan_trip(
 
     geometry = [pt for leg in leg_geometries for pt in leg]
     elevations_m = [e for leg in leg_elevations for e in leg]
-    point_flags = await _point_hazard_flags(geometry, hazard_types, departure_epoch)
+    point_flags = await _point_hazard_flags(
+        geometry, hazard_types, departure_epoch, _leg_anchor_miles(leg_geometries, cumulative_distances_mi(geometry)))
 
     if feasible and point_flags and safety_mode in AVOID_BUDGET_MIN and leg_records:
         budget_min = AVOID_BUDGET_MIN[safety_mode]
@@ -603,7 +615,8 @@ async def plan_trip(
                     f"Rerouted around {len(avoidable)} flagged spot(s) for about "
                     f"+{max(1, round(reroute['added_min']))} min."
                 ))
-                point_flags = await _point_hazard_flags(geometry, hazard_types, departure_epoch)
+                point_flags = await _point_hazard_flags(
+        geometry, hazard_types, departure_epoch, _leg_anchor_miles(leg_geometries, cumulative_distances_mi(geometry)))
 
     safety_flags = _static_safety_flags(origin, destination, geometry, elevations_m, weather, departure_epoch) + point_flags
 
@@ -679,8 +692,27 @@ def localize_c(plan: dict) -> dict:
     return _localize(plan, _C_PATTERNS)
 
 
+def _leg_anchor_miles(leg_geometries: list[list[tuple[float, float]]],
+                      cum: list[float]) -> list[float]:
+    """Distances along the whole trip where a leg starts or ends: the origin,
+    every charging stop and waypoint, and the destination. These are the only
+    places a driver is on surface streets, so they are where the hazard search
+    is worth spending on a long trip."""
+    if not cum:
+        return []
+    anchors = [0.0]
+    idx = 0
+    for leg in leg_geometries[:-1]:
+        idx += len(leg)
+        if 0 <= idx < len(cum):
+            anchors.append(cum[idx])
+    anchors.append(cum[-1])
+    return anchors
+
+
 async def _point_hazard_flags(geometry: list[tuple[float, float]], hazard_types: tuple,
-                               departure_epoch: float | None = None) -> list[dict]:
+                               departure_epoch: float | None = None,
+                               anchors_mi: list[float] | None = None) -> list[dict]:
     """The Overpass-backed point hazards, each type individually opt-outable
     (unprotected lefts, unsignaled wide-road crossings, rail crossings).
     Separate from the static flags because the safety-avoidance pass needs
@@ -691,11 +723,11 @@ async def _point_hazard_flags(geometry: list[tuple[float, float]], hazard_types:
     cum = cumulative_distances_mi(geometry)
     checks = []
     if "unprotected_left" in hazard_types:
-        checks.append(crossings.unprotected_left_flags(geometry, cum))
+        checks.append(crossings.unprotected_left_flags(geometry, cum, anchors_mi))
     if "wide_crossing" in hazard_types:
-        checks.append(crossings.wide_crossing_flags(geometry, cum))
+        checks.append(crossings.wide_crossing_flags(geometry, cum, anchors_mi))
     if "rail_crossing" in hazard_types:
-        checks.append(crossings.rail_crossing_flags(geometry, cum))
+        checks.append(crossings.rail_crossing_flags(geometry, cum, anchors_mi))
     if "lane_closure" in hazard_types:
         checks.append(crossings.lane_closure_flags(geometry, cum, departure_epoch))
     if not checks:

@@ -48,7 +48,72 @@ TURN_FROM_ROAD_PARALLEL_DEG = 35.0
 MI_PER_M = 0.000621371
 
 
-def _decimate(coords: list[tuple[float, float]]) -> list[tuple[float, float]]:
+# Above this trip length, asking Overpass about the whole polyline stops
+# working. MAX_POLY_POINTS spreads its budget over the entire route, so a
+# 600-mile trip gets a point every 4 miles and the "polyline" Overpass sees is
+# a chain of chords that cuts corners by miles. The 30m buffer around that
+# shape finds roads near the chords rather than roads near the route, and the
+# failure mode is an empty result, which reads as "safe".
+WHOLE_ROUTE_MAX_MI = 60.0
+
+# Past that, only look where the hazards live. Unprotected lefts and unsignaled
+# crossings are surface-street events: they happen leaving home, arriving, and
+# getting in and out of charging stops. The interstate between them has none.
+HAZARD_WINDOW_MI = 6.0
+
+
+def _windows(cum: list[float], anchors_mi: list[float]) -> list[tuple[float, float]]:
+    """Merged mile ranges to actually search, HAZARD_WINDOW_MI either side of
+    each anchor. Overlapping windows are merged so a cluster of nearby stops
+    becomes one span rather than several."""
+    total = cum[-1] if cum else 0.0
+    spans = sorted(
+        (max(0.0, a - HAZARD_WINDOW_MI), min(total, a + HAZARD_WINDOW_MI))
+        for a in anchors_mi
+    )
+    merged: list[list[float]] = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return [(s, e) for s, e in merged]
+
+
+def _search_polylines(coords: list[tuple[float, float]], cum: list[float],
+                      anchors_mi: list[float] | None) -> list[list[tuple[float, float]]]:
+    """The polylines to hand Overpass, as a list because each one needs its own
+    `around:` clause. They cannot be concatenated into a single coordinate
+    list: Overpass reads a coordinate list as one continuous polyline, so
+    joining two windows 200 miles apart would draw a search corridor straight
+    across everything between them."""
+    if not coords:
+        return []
+    total = cum[-1] if cum else 0.0
+    if anchors_mi is None or total <= WHOLE_ROUTE_MAX_MI:
+        return [_decimate(coords)]
+
+    out = []
+    budget = max(1, MAX_POLY_POINTS // max(1, len(_windows(cum, anchors_mi))))
+    for start, end in _windows(cum, anchors_mi):
+        seg = [c for c, d in zip(coords, cum) if start <= d <= end]
+        if len(seg) >= 2:
+            out.append(_decimate(seg, cap=budget))
+    return out or [_decimate(coords)]
+
+
+def _around_clauses(polylines: list[list[tuple[float, float]]], radius_m: int,
+                    body: str) -> str:
+    """One `around:` clause per window, unioned. `body` is the tag filter that
+    follows, e.g. '["railway"="level_crossing"]'."""
+    parts = []
+    for poly in polylines:
+        pts = ",".join(f"{lat:.5f},{lon:.5f}" for lon, lat in poly)
+        parts.append(f"{{kind}}(around:{radius_m},{pts}){body};")
+    return "".join(parts)
+
+
+def _decimate(coords: list[tuple[float, float]], cap: int = MAX_POLY_POINTS) -> list[tuple[float, float]]:
     """Thin a route polyline to at most MAX_POLY_POINTS points for an
     Overpass `around:` filter. Overpass reads a coordinate list as a
     POLYLINE, not as separate points, so thinning keeps full route coverage
@@ -57,9 +122,9 @@ def _decimate(coords: list[tuple[float, float]]) -> list[tuple[float, float]]:
     Ceiling division, because floor division doesn't actually respect the
     cap: with 577 vertices and a 300 cap, 577//300 == 1 sent all 577
     points, and the constant quietly meant nothing below 2x its value."""
-    if len(coords) <= MAX_POLY_POINTS:
+    if len(coords) <= cap:
         return coords
-    step = -(-len(coords) // MAX_POLY_POINTS)
+    step = -(-len(coords) // cap)
     sampled = coords[::step]
     # Keep the true endpoint - a thinned line that stops short would miss
     # hazards in the last stretch.
@@ -86,14 +151,25 @@ def _turn_angle_deg(b_in: float, b_out: float) -> float:
     return ((b_out - b_in + 540) % 360) - 180
 
 
-def find_sharp_left_turns(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
+def find_sharp_left_turns(coords: list[tuple[float, float]], cum: list[float],
+                          anchors_mi: list[float] | None = None) -> list[dict]:
     """Left turns of MIN_LEFT_TURN_DEG+ within a short arc. coords are
-    (lon, lat) as everywhere else. Pure geometry, no API calls."""
+    (lon, lat) as everywhere else. Pure geometry, no API calls.
+
+    The MAX_TURN_POINTS cap is taken in route order, so on a long trip all 40
+    would be spent inside the origin city and the rest of the drive would
+    never be looked at. Given anchors, only vertices near one are considered,
+    which is where surface-street turns happen anyway."""
     window_mi = TURN_WINDOW_M * MI_PER_M
     turns = []
     last_kept_mi = -1e9
+    spans = None
+    if anchors_mi is not None and cum and cum[-1] > WHOLE_ROUTE_MAX_MI:
+        spans = _windows(cum, anchors_mi)
 
     for i in range(1, len(coords) - 1):
+        if spans is not None and not any(a <= cum[i] <= b for a, b in spans):
+            continue
         # find the points ~one window behind and ahead of vertex i
         j = i
         while j > 0 and cum[i] - cum[j] < window_mi:
@@ -119,7 +195,8 @@ def find_sharp_left_turns(coords: list[tuple[float, float]], cum: list[float]) -
     return turns
 
 
-async def unprotected_left_flags(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
+async def unprotected_left_flags(coords: list[tuple[float, float]], cum: list[float],
+                                  anchors_mi: list[float] | None = None) -> list[dict]:
     """Flags for left turns that CUT ACROSS a bigger road with no traffic
     signal. A left off a road you're already on - waiting in its own turn
     pocket / center turn lane, crossing only oncoming traffic - is normal
@@ -127,7 +204,7 @@ async def unprotected_left_flags(coords: list[tuple[float, float]], cum: list[fl
     incoming route bearing with the major way's bearing at the turn). One
     batched Overpass query for all turn points; results are matched back to
     their turn point locally by distance."""
-    turns = find_sharp_left_turns(coords, cum)
+    turns = find_sharp_left_turns(coords, cum, anchors_mi)
     if not turns:
         return []
 
@@ -215,7 +292,8 @@ def _seg_intersection(p1, p2, p3, p4):
     return None
 
 
-async def wide_crossing_flags(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
+async def wide_crossing_flags(coords: list[tuple[float, float]], cum: list[float],
+                               anchors_mi: list[float] | None = None) -> list[dict]:
     """The founding safety ask: crossing a main road (4+ lanes or a
     primary/trunk artery) straight-through with no traffic signal.
 
@@ -230,14 +308,17 @@ async def wide_crossing_flags(coords: list[tuple[float, float]], cum: list[float
     paper but not on the ground. Crossing ways tagged bridge/tunnel or
     motorway are excluded, which removes most of those, but a rare false
     positive is possible; the copy says 'check it' rather than 'gospel'."""
-    sampled = _decimate(coords)
-    poly = ",".join(f"{lat:.5f},{lon:.5f}" for lon, lat in sampled)
+    polylines = _search_polylines(coords, cum, anchors_mi)
+    if not polylines:
+        return []
+    ways = _around_clauses(polylines, 30, '["highway"~"^(primary|trunk|secondary)$"]').format(kind="way")
+    lanes = _around_clauses(polylines, 30, '["lanes"~"^([4-9]|1[0-9])$"]["highway"]').format(kind="way")
+    signals = _around_clauses(polylines, 30, '["highway"="traffic_signals"]').format(kind="node")
     query = (
         f'[out:json][timeout:18];'
-        f'(way(around:30,{poly})["highway"~"^(primary|trunk|secondary)$"];'
-        f'way(around:30,{poly})["lanes"~"^([4-9]|1[0-9])$"]["highway"];);'
+        f'({ways}{lanes});'
         f'out tags geom;'
-        f'node(around:30,{poly})["highway"="traffic_signals"];out;'
+        f'({signals});out;'
     )
     try:
         data = await providers.overpass_raw(query)
@@ -313,10 +394,18 @@ async def lane_closure_flags(coords: list[tuple[float, float]], cum: list[float]
                               at_epoch: float | None = None) -> list[dict]:
     """Active Caltrans lane/full closures sitting on (or within half a mile
     of) the route. Statewide feed is cached in providers; here it's just a
-    proximity match against the polyline."""
+    proximity match against the polyline.
+
+    California only, and there is no national equivalent to fall back on:
+    every state DOT publishes its own feed in its own shape, and some publish
+    none. A route that never enters California would match nothing anyway, so
+    it skips the lookup rather than pull 12 district feeds to prove it."""
     from .geo import cumulative_distances_mi, nearest_route_point  # local import avoids cycles
 
     import time
+
+    if not providers.touches_california(coords):
+        return []
 
     try:
         closures = await providers.caltrans_closures()
@@ -359,12 +448,15 @@ async def lane_closure_flags(coords: list[tuple[float, float]], cum: list[float]
     return flags
 
 
-async def rail_crossing_flags(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
+async def rail_crossing_flags(coords: list[tuple[float, float]], cum: list[float],
+                               anchors_mi: list[float] | None = None) -> list[dict]:
     """Rail level crossings on the route itself, from OSM's
     railway=level_crossing nodes within a tight buffer of the polyline."""
-    sampled = _decimate(coords)
-    poly = ",".join(f"{lat:.5f},{lon:.5f}" for lon, lat in sampled)
-    query = f'[out:json][timeout:18];node(around:{RAIL_BUFFER_M},{poly})["railway"="level_crossing"];out;'
+    polylines = _search_polylines(coords, cum, anchors_mi)
+    if not polylines:
+        return []
+    nodes = _around_clauses(polylines, RAIL_BUFFER_M, '["railway"="level_crossing"]').format(kind="node")
+    query = f'[out:json][timeout:18];({nodes});out;'
 
     try:
         data = await providers.overpass_raw(query)
