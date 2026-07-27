@@ -213,6 +213,12 @@ async def plan_trip(
     preferred_networks: tuple = (),  # empty = any network
     min_charger_kw: float = 20.0,
     avoid_ferries: bool = False,
+    # Stage 5's feedback loop: a consumption multiplier learned from the
+    # driver's own logged predicted-vs-actual trips (computed client-side,
+    # where the logs live). 1.0 = no logged history worth applying. The
+    # frontend already biases it to the safe side; the request model clamps
+    # it again as defense in depth.
+    calibration_factor: float = 1.0,
 ) -> dict:
     if waypoints:
         # Each waypoint splits the trip into independently-planned sub-trips
@@ -234,7 +240,7 @@ async def plan_trip(
                 hazard_types=hazard_types,
                 departure_epoch=departure_epoch, max_stint_min=max_stint_min,
                 preferred_networks=preferred_networks, min_charger_kw=min_charger_kw,
-                avoid_ferries=avoid_ferries,
+                avoid_ferries=avoid_ferries, calibration_factor=calibration_factor,
             )
             subs.append(sub)
             batt = max(sub["arrival_pct"], 1.0)  # a failed sub-trip still chains, feasible=False carries the truth
@@ -275,6 +281,7 @@ async def plan_trip(
             "rate_limited": any(s["rate_limited"] for s in subs),
             "weather": subs[0]["weather"],
             "safety_flags": [f for s in subs for f in s["safety_flags"]],
+            "calibration_factor": calibration_factor,
         }
 
     stops_out = []
@@ -289,9 +296,14 @@ async def plan_trip(
 
     weather = await _trip_weather(origin, destination, temp_override_f, departure_epoch)
     # One combined consumption adjustment: weather (live or overridden
-    # temperature, wind) plus passenger/luggage load. Threaded through every
-    # estimate under the historical name weather_adjustment.
-    weather_adjustment = (weather["adjustment"] if weather else 0.0) + range_model.load_adjustment_fraction(passengers, suitcases)
+    # temperature, wind), passenger/luggage load, and the driver's own
+    # logged-trip calibration. Threaded through every estimate under the
+    # historical name weather_adjustment.
+    weather_adjustment = (
+        (weather["adjustment"] if weather else 0.0)
+        + range_model.load_adjustment_fraction(passengers, suitcases)
+        + (calibration_factor - 1.0)
+    )
 
     current_start = origin
     current_pct = battery_pct
@@ -571,6 +583,9 @@ async def plan_trip(
         "rate_limited": rate_limited,  # true = retrying in a minute may fully fix this plan
         "weather": weather,  # None if the weather fetch failed - see _trip_weather
         "safety_flags": safety_flags,
+        # Echoed back so the UI (and anyone reading the response) can see the
+        # learned adjustment was actually applied, not silently dropped.
+        "calibration_factor": calibration_factor,
     }
 
 

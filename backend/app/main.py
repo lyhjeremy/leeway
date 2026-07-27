@@ -14,7 +14,7 @@ from .voice import VoiceSearchError, find_stops
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.14.0"
+VERSION = "0.15.0"
 
 app = FastAPI(title="Leeway API")
 
@@ -94,6 +94,12 @@ class PlanRequest(BaseModel):
     preferred_networks: list[str] = Field(default=[], max_length=8)
     min_charger_kw: float = Field(default=20.0, ge=20, le=350)
     avoid_ferries: bool = False
+    # Stage 5 feedback loop: consumption multiplier the client computes from
+    # its own logged trips (the logs live in the browser, so the client owns
+    # the math - see computeCalibration in storage.ts). Bounds are defense in
+    # depth on top of the client's own safe-side clamps: a corrupted or
+    # hand-crafted value can't halve consumption or double it.
+    calibration_factor: float = Field(default=1.0, ge=0.9, le=1.5)
     units: Literal["mi", "km"] = "mi"  # numeric fields stay miles; narrative strings get localized
     temp_unit: Literal["F", "C"] = "F"  # independent of distance - km with °F is a real combination
 
@@ -156,6 +162,7 @@ async def plan(req: PlanRequest):
             preferred_networks=tuple(n[:40] for n in req.preferred_networks),
             min_charger_kw=req.min_charger_kw,
             avoid_ferries=req.avoid_ferries,
+            calibration_factor=req.calibration_factor,
         )
         if req.units == "km":
             result = localize_km(result)

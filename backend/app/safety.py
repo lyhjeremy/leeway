@@ -126,7 +126,4 @@ def find_twisty_sections(coords: list[tuple[float, float]], cum: list[float]) ->
             i = j + 1
         else:
             i += 1
-    # a mid-section pin helps on the map
-    for f in flags:
-        pass
     return flags[:4]

@@ -8,7 +8,9 @@ returned real drive_through/brand tags).
 """
 
 import asyncio
+import json
 import os
+import time
 
 import httpx
 
@@ -26,6 +28,61 @@ OVERPASS_BASE = "https://overpass-api.de/api/interpreter"
 CA_BBOX = {"min_lon": -124.48, "min_lat": 32.53, "max_lon": -114.13, "max_lat": 42.01}
 
 
+class _TTLCache:
+    """Tiny in-process TTL cache for successful provider responses. Exists to
+    stretch the free-tier quotas, which are this stack's real scarcity: the
+    ORS directions quota (~150-200 plans/day documented ceiling) once ran out
+    mid-verification, and a single planning session re-requests identical
+    routes constantly - skip-a-stop replans, corridor re-plans, and the
+    landing page's sample trip are all repeats. Only successes are cached;
+    errors and rate limits always pass through so the retry logic upstream
+    keeps seeing the truth.
+
+    Values are returned by reference, not copied - every caller in this
+    codebase treats provider responses as read-only (the planner copies
+    station dicts before annotating them). Keep it that way."""
+
+    def __init__(self, ttl_s: float, max_entries: int):
+        self.ttl_s = ttl_s
+        self.max_entries = max_entries
+        self._store: dict = {}  # key -> (expires_at, value)
+
+    def get(self, key):
+        item = self._store.get(key)
+        if item is None:
+            return None
+        expires_at, value = item
+        if time.time() > expires_at:
+            del self._store[key]
+            return None
+        return value
+
+    def set(self, key, value):
+        if len(self._store) >= self.max_entries:
+            # Evict the oldest-inserted quarter (dicts keep insertion order).
+            # Crude next to LRU, but cache misses here only cost an API call
+            # we'd have made anyway - simplicity wins.
+            for k in list(self._store)[: max(1, self.max_entries // 4)]:
+                del self._store[k]
+        self._store[key] = (time.time() + self.ttl_s, value)
+
+    def clear(self):
+        self._store.clear()
+
+
+# Route geometry/duration from ORS has no live-traffic component, so a route
+# answered this morning is still right this afternoon - 6h is conservative.
+# Directions results carry full geometry (+elevation), so the entry cap is
+# what bounds memory, sized for Render's free 512MB instance.
+_directions_cache = _TTLCache(ttl_s=6 * 3600, max_entries=64)
+_geocode_cache = _TTLCache(ttl_s=24 * 3600, max_entries=256)
+# Charging stations come and go on week scales; 30min mostly serves replans
+# within one planning session (skip-stop, corridor switches) without letting
+# a whole day run on stale data.
+_stations_cache = _TTLCache(ttl_s=1800, max_entries=128)
+_weather_cache = _TTLCache(ttl_s=900, max_entries=64)
+
+
 class ORSNotConfigured(Exception):
     pass
 
@@ -37,6 +94,10 @@ def _require_key():
 
 async def geocode(query: str) -> list[dict]:
     _require_key()
+    cache_key = query.strip().lower()
+    cached = _geocode_cache.get(cache_key)
+    if cached is not None:
+        return cached
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(
             f"{ORS_BASE}/geocode/search",
@@ -57,6 +118,7 @@ async def geocode(query: str) -> list[dict]:
     for feat in data.get("features", []):
         lon, lat = feat["geometry"]["coordinates"][:2]
         out.append({"label": feat["properties"].get("label", query), "lat": lat, "lon": lon})
+    _geocode_cache.set(cache_key, out)
     return out
 
 
@@ -130,6 +192,18 @@ async def directions(
     if options:
         body["options"] = options
 
+    # ~1m coordinate precision; identical requests within the TTL cost zero
+    # quota. Keyed on everything that changes the answer, including avoid
+    # polygons and via points.
+    cache_key = json.dumps([
+        round(olat, 5), round(olon, 5), round(dlat, 5), round(dlon, 5),
+        sorted(avoid_features), avoid_polygons,
+        [round(via[0], 5), round(via[1], 5)] if via is not None else None,
+    ])
+    cached = _directions_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(
             f"{ORS_BASE}/v2/directions/driving-car/geojson",
@@ -156,7 +230,7 @@ async def directions(
         avg_speed_mph = distance_mi / (duration_min / 60) if duration_min else 0
         highway_fraction = max(0.0, min(1.0, (avg_speed_mph - 25) / 35))
 
-    return {
+    result = {
         "distance_mi": distance_mi,
         "duration_min": duration_min,
         "ascent_ft": ascent_m * FT_PER_METER,
@@ -165,6 +239,8 @@ async def directions(
         "geometry": coords,
         "elevations_m": elevations_m,
     }
+    _directions_cache.set(cache_key, result)
+    return result
 
 
 class OCMNotConfigured(Exception):
@@ -174,6 +250,12 @@ class OCMNotConfigured(Exception):
 async def find_charging_stations(lat: float, lon: float, radius_mi: float = 15, max_results: int = 50) -> list[dict]:
     if not OCM_API_KEY:
         raise OCMNotConfigured("OCM_API_KEY is not set")
+    # ~110m position precision - search centers are interpolated route
+    # points, so hashing the exact floats would never hit.
+    cache_key = (round(lat, 3), round(lon, 3), round(radius_mi, 1), max_results)
+    cached = _stations_cache.get(cache_key)
+    if cached is not None:
+        return cached
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
             f"{OCM_BASE}/poi/",
@@ -225,7 +307,9 @@ async def find_charging_stations(lat: float, lon: float, radius_mi: float = 15, 
             "cost": cost,
             "photo_url": photo_url,
         })
-    return [s for s in out if s["lat"] is not None and s["lon"] is not None]
+    result = [s for s in out if s["lat"] is not None and s["lon"] is not None]
+    _stations_cache.set(cache_key, result)
+    return result
 
 
 async def current_weather(lat: float, lon: float, at_epoch: float | None = None) -> dict:
@@ -237,9 +321,13 @@ async def current_weather(lat: float, lon: float, at_epoch: float | None = None)
     With at_epoch set (a departure time), the snapshot comes from the hourly
     FORECAST at that hour instead of current conditions - leaving at 6am
     should plan against 6am weather, not tonight's."""
-    import time as _time
-
-    use_forecast = at_epoch is not None and abs(at_epoch - _time.time()) > 3600
+    use_forecast = at_epoch is not None and abs(at_epoch - time.time()) > 3600
+    # Hour-bucketed: two plans in the same hour with the same rough midpoint
+    # share one forecast call.
+    cache_key = (round(lat, 2), round(lon, 2), int(at_epoch // 3600) if use_forecast else None)
+    cached = _weather_cache.get(cache_key)
+    if cached is not None:
+        return cached
     params = {
         "latitude": lat,
         "longitude": lon,
@@ -261,20 +349,22 @@ async def current_weather(lat: float, lon: float, at_epoch: float | None = None)
     if use_forecast:
         hours = data["hourly"]["time"]
         idx = min(range(len(hours)), key=lambda i: abs(hours[i] - at_epoch))
-        return {
+        result = {
             "temp_f": data["hourly"]["temperature_2m"][idx],
             "wind_speed_mph": data["hourly"]["wind_speed_10m"][idx],
             "wind_from_deg": data["hourly"]["wind_direction_10m"][idx],
             "forecast": True,
         }
-
-    current = data["current"]
-    return {
-        "temp_f": current["temperature_2m"],
-        "wind_speed_mph": current["wind_speed_10m"],
-        "wind_from_deg": current["wind_direction_10m"],
-        "forecast": False,
-    }
+    else:
+        current = data["current"]
+        result = {
+            "temp_f": current["temperature_2m"],
+            "wind_speed_mph": current["wind_speed_10m"],
+            "wind_from_deg": current["wind_direction_10m"],
+            "forecast": False,
+        }
+    _weather_cache.set(cache_key, result)
+    return result
 
 
 async def directions_alternatives(
@@ -342,8 +432,6 @@ async def caltrans_closures() -> list[dict]:
     (cwwp2.dot.ca.gov LCS). Cached for CALTRANS_TTL_S; a district feed that
     fails just contributes nothing - missing a closure flag beats failing
     the plan."""
-    import time
-
     now = time.time()
     if now - _caltrans_cache["ts"] < CALTRANS_TTL_S:
         return _caltrans_cache["closures"]

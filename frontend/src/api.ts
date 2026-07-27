@@ -36,6 +36,7 @@ export async function planTrip(params: {
   minChargerKw?: number
   preferredNetworks?: string[]
   avoidFerries?: boolean
+  calibrationFactor?: number
 }): Promise<PlanResponse> {
   const res = await fetch(`${API_BASE}/api/plan`, {
     method: 'POST',
@@ -67,6 +68,7 @@ export async function planTrip(params: {
       min_charger_kw: params.minChargerKw ?? 20,
       preferred_networks: params.preferredNetworks ?? [],
       avoid_ferries: params.avoidFerries ?? false,
+      calibration_factor: params.calibrationFactor ?? 1.0,
     }),
   })
   if (!res.ok) {

@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
-import { loadLoggedTrips, loadRangeHistory, loadDistUnit, type LoggedTrip, type RangeHistoryEntry } from './storage'
+import {
+  computeCalibration,
+  loadLoggedTrips,
+  loadRangeHistory,
+  loadDistUnit,
+  type LoggedTrip,
+  type RangeHistoryEntry,
+} from './storage'
 
 const MI_TO_KM = 1.609344
 
@@ -40,6 +47,26 @@ export default function AccuracyPage() {
             open Leeway - it'll show up here.
           </p>
         )}
+        {trips.length > 0 &&
+          (() => {
+            const cal = computeCalibration()
+            if (!cal) {
+              return (
+                <p className="muted">
+                  Once 3 or more substantial trips are logged, Leeway starts tuning its estimates to your car from
+                  this record.
+                </p>
+              )
+            }
+            return (
+              <p className="muted">
+                These logs now tune the planner: your car ran {Math.round(Math.abs(cal.factor - 1) * 100)}%{' '}
+                {cal.factor > 1 ? 'hungrier' : 'easier on the battery'} than the stock estimate across your last{' '}
+                {cal.tripsUsed} substantial trips, and future plans account for it (leaning toward caution when your
+                car outperforms the estimate).
+              </p>
+            )
+          })()}
         {trips.length > 0 && (
           <table className="accuracy-table">
             <thead>

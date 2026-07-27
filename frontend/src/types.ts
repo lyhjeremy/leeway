@@ -100,4 +100,5 @@ export interface PlanResponse {
   rate_limited: boolean
   weather: WeatherInfo | null
   safety_flags: SafetyFlag[]
+  calibration_factor?: number
 }

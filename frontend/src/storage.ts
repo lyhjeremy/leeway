@@ -113,6 +113,10 @@ export interface PendingTrip {
   destinationLabel: string
   predictedArrivalPct: number
   feasible: boolean
+  // Start-of-trip battery %. Needed to turn a logged trip into a consumption
+  // ratio (actual used / predicted used) for calibration; optional because
+  // trips logged before this field existed don't have it.
+  startBatteryPct?: number
 }
 
 export function savePendingTrip(trip: Omit<PendingTrip, 'id' | 'plannedAt'>) {
@@ -150,6 +154,7 @@ export interface LoggedTrip {
   destinationLabel: string
   predictedArrivalPct: number
   actualArrivalPct: number
+  startBatteryPct?: number
 }
 
 export function loadLoggedTrips(): LoggedTrip[] {
@@ -167,10 +172,66 @@ export function logTripResult(pending: PendingTrip, actualArrivalPct: number) {
     destinationLabel: pending.destinationLabel,
     predictedArrivalPct: pending.predictedArrivalPct,
     actualArrivalPct,
+    startBatteryPct: pending.startBatteryPct,
   }
   const existing = loadLoggedTrips()
   storageSet('local', LOGGED_TRIPS_KEY, JSON.stringify([next, ...existing]))
   clearPendingTrip()
+}
+
+// Stage 5's actual feedback loop: turn the logged predicted-vs-actual record
+// into a consumption multiplier the planner applies to future estimates.
+// Computed here because the logs live in this browser - there is no backend
+// database to learn from yet.
+export interface Calibration {
+  factor: number // consumption multiplier sent to the planner
+  tripsUsed: number
+  observedRatio: number // raw recency-weighted actual/predicted consumption
+}
+
+const CALIBRATION_MIN_TRIPS = 3
+const CALIBRATION_MIN_PREDICTED_USED_PCT = 10 // tiny trips are all noise
+const CALIBRATION_MAX_TRIPS = 10
+const CALIBRATION_RECENCY_DECAY = 0.8
+
+export function computeCalibration(): Calibration | null {
+  // Only trips that recorded a start % can yield a consumption ratio, and
+  // only trips that used a meaningful slice of battery say anything real.
+  const usable = loadLoggedTrips().filter(
+    (t) =>
+      typeof t.startBatteryPct === 'number' &&
+      t.startBatteryPct - t.predictedArrivalPct >= CALIBRATION_MIN_PREDICTED_USED_PCT &&
+      t.startBatteryPct - t.actualArrivalPct > 0,
+  )
+  if (usable.length < CALIBRATION_MIN_TRIPS) return null
+
+  // Logs are stored newest-first; weight recent trips more (battery health
+  // and driving habits drift, last summer's trips matter less than last week's)
+  let num = 0
+  let den = 0
+  let w = 1
+  for (const t of usable.slice(0, CALIBRATION_MAX_TRIPS)) {
+    const predictedUsed = t.startBatteryPct! - t.predictedArrivalPct
+    const actualUsed = t.startBatteryPct! - t.actualArrivalPct
+    // A single wild log entry (typo, forgot a detour) can't dominate
+    const ratio = Math.min(2, Math.max(0.5, actualUsed / predictedUsed))
+    num += ratio * w
+    den += w
+    w *= CALIBRATION_RECENCY_DECAY
+  }
+  const observed = num / den
+
+  // Safe-side asymmetry, the product's core promise: if the car does WORSE
+  // than predicted, apply the full correction; if it does BETTER, apply only
+  // half and never below 0.9 - optimistic corrections are the dangerous kind.
+  const factor = observed >= 1 ? Math.min(1.5, observed) : Math.max(0.9, (1 + observed) / 2)
+  if (Math.abs(factor - 1) < 0.02) return null // within noise - say nothing
+
+  return {
+    factor: Math.round(factor * 1000) / 1000,
+    tripsUsed: Math.min(usable.length, CALIBRATION_MAX_TRIPS),
+    observedRatio: Math.round(observed * 1000) / 1000,
+  }
 }
 
 export interface RangeHistoryEntry {

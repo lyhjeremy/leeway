@@ -22,6 +22,7 @@ import type {
 } from './types'
 import {
   clearPendingTrip,
+  computeCalibration,
   loadDistUnit,
   loadFullRangeMi,
   loadRecentTrips,
@@ -181,6 +182,9 @@ function Planner() {
   const [shareMsg, setShareMsg] = useState<string | null>(null)
   const [showTripCard, setShowTripCard] = useState(false)
   const [pendingTrip, setPendingTrip] = useState<PendingTrip | null>(() => shouldPromptForPendingTrip())
+  // Learned from this browser's logged trips; null until 3+ meaningful logs
+  // exist. Recomputed when a new trip gets logged.
+  const [calibration, setCalibration] = useState(() => computeCalibration())
 
   // All numbers live in miles internally; only the display converts.
   const dist = (mi: number) => `${Math.round(units === 'km' ? mi * MI_TO_KM : mi)} ${units}`
@@ -633,6 +637,7 @@ function Planner() {
         avoidFerries,
         excludedStationIds: overrides.excludedStationIds,
         waypoints: allWaypoints,
+        calibrationFactor: calibration?.factor,
       })
       setPlan(result)
       saveRecentTrip({ origin: o, destination: d })
@@ -642,6 +647,7 @@ function Planner() {
         destinationLabel: d.label,
         predictedArrivalPct: result.arrival_pct,
         feasible: result.feasible,
+        startBatteryPct: batteryPct,
       })
     } catch (e) {
       // A network-level failure surfaces as TypeError('Failed to fetch') -
@@ -802,6 +808,7 @@ function Planner() {
     if (!pendingTrip) return
     logTripResult(pendingTrip, actualArrivalPct)
     setPendingTrip(null)
+    setCalibration(computeCalibration())
   }
 
   function handleDismissPendingTrip() {
@@ -1367,6 +1374,13 @@ function Planner() {
                   {Math.floor(plan.duration_min / 60)} h {plan.duration_min % 60} min total
                 </div>
                 {plan.weather && <div className="sub">Range adjusted for {plan.weather.summary}</div>}
+                {plan.calibration_factor != null && plan.calibration_factor !== 1 && calibration && (
+                  <div className="sub">
+                    Tuned to your car: your last {calibration.tripsUsed} logged trips ran{' '}
+                    {Math.round(Math.abs(calibration.factor - 1) * 100)}%{' '}
+                    {calibration.factor > 1 ? 'hungrier' : 'easier on the battery'} than the stock estimate.
+                  </div>
+                )}
                 {plan.safety_flags.slice(0, 3).map((f, i) => (
                   <div className="sub safety-flag" key={i}>
                     ⚠ {f.description}
