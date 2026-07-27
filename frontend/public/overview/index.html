@@ -163,9 +163,11 @@
   }
   .panels figure { margin: 0; }
   .panels .shot { border-radius: 8px; }
-  .duo { display: grid; grid-template-columns: 1fr; gap: 22px; margin-top: 26px; }
-  @media (min-width: 820px) { .duo { grid-template-columns: 1fr 1fr; } }
-  .duo figure { margin: 0; }
+  /* Screenshots run one per row. Paired side by side, a wide map shot loses
+     half its width and its labels stop being readable. A tall panel shot is
+     the opposite problem: at full width it runs past a screen, so it gets a
+     ceiling of its own. */
+  .shot--narrow { max-width: 430px; }
 
   .voice {
     margin: 30px 0 0; padding: 21px 25px; border-left: 3px solid var(--go);
@@ -353,18 +355,16 @@
       the route goes the long way around the block and says so:
       <strong>rerouted around 1 flagged spot for about +1 min</strong>.
     </p>
-    <div class="duo">
-      <figure>
-        <img class="shot" src="tab-safety.jpg" width="1000" height="1341" loading="lazy"
-          alt="The Safety tab showing a hazard detour budget of Flag only, +5, +10 or +20 minutes, and four toggles for left turns, 4+ lane crossings, rail crossings and Caltrans closures." />
-        <figcaption>Flag only, or spend 5, 10, or 20 minutes avoiding it.</figcaption>
-      </figure>
-      <figure>
-        <img class="shot" src="safety-detour.jpg" width="1600" height="870" loading="lazy"
-          alt="A short route that detours in a rectangle around a block rather than crossing West Olympic Boulevard without a traffic signal." />
-        <figcaption>The detour in practice: round the block, not across the boulevard.</figcaption>
-      </figure>
-    </div>
+    <figure>
+      <img class="shot shot--narrow" src="tab-safety.jpg" width="1000" height="1341" loading="lazy"
+        alt="The Safety tab showing a hazard detour budget of Flag only, +5, +10 or +20 minutes, and four toggles for left turns, 4+ lane crossings, rail crossings and Caltrans closures." />
+      <figcaption>Flag only, or spend 5, 10, or 20 minutes avoiding it.</figcaption>
+    </figure>
+    <figure>
+      <img class="shot" src="safety-detour.jpg" width="1600" height="870" loading="lazy"
+        alt="A short route that detours in a rectangle around a block rather than crossing West Olympic Boulevard without a traffic signal." />
+      <figcaption>The detour in practice: around the block, not across the boulevard.</figcaption>
+    </figure>
     <div class="voice">
       <p><q>For each hazard below: ON = route around it when the detour adds 5 minutes
         or less, otherwise warn about it. OFF = don't check for it.</q></p>
@@ -448,27 +448,25 @@
       scroll. It is built to be screenshotted, because your car's screen can't
       open a web app.
     </p>
+    <figure>
+      <img class="shot" src="trip-card.jpg" width="1600" height="867" loading="lazy"
+        alt="The Leeway trip card: leave with 68 percent, the Getty Museum at 3 miles, a Tesla Supercharger at 60 miles arriving at 25 percent and charging to 80 percent, then 28 miles to arrive at 62 percent." />
+      <figcaption>The trip card, sized for a glance.</figcaption>
+    </figure>
     <p>
       Any single stop can also go out as a maps link, which the Tesla app and
       most navigation apps accept.
     </p>
-    <div class="duo">
-      <figure>
-        <img class="shot" src="trip-card.jpg" width="1600" height="867" loading="lazy"
-          alt="The Leeway trip card: leave with 68 percent, the Getty Museum at 3 miles, a Tesla Supercharger at 60 miles arriving at 25 percent and charging to 80 percent, then 28 miles to arrive at 62 percent." />
-        <figcaption>The trip card, sized for a glance.</figcaption>
-      </figure>
-      <figure>
-        <img class="shot" src="trip-logging.jpg" width="1600" height="869" loading="lazy"
-          alt="A dialog asking How did that trip go, showing the predicted arrival and a field for the actual arrival percentage, with the verdict Spot on." />
-        <figcaption>"How did that trip go?" and this one was spot on.</figcaption>
-      </figure>
-    </div>
     <p>
       Then comes the part most planners skip. The next time you open Leeway it
       asks <strong>how the trip actually went</strong>, and puts what happened
       next to what it promised.
     </p>
+    <figure>
+      <img class="shot" src="trip-logging.jpg" width="1600" height="869" loading="lazy"
+        alt="A dialog asking How did that trip go, showing the predicted arrival and a field for the actual arrival percentage, with the verdict Spot on." />
+      <figcaption>"How did that trip go?" and this one was spot on.</figcaption>
+    </figure>
     <p>
       Those answers do more than keep score. After
       <strong>three or more substantial trips</strong>, Leeway starts correcting
