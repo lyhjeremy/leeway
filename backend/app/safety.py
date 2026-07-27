@@ -70,3 +70,63 @@ def find_steep_descents(coords: list[tuple[float, float]], elevations_m: list[fl
             "lon": coords[mid_i][0],
         })
     return out
+
+
+# Sustained winding stretches - canyon roads, mountain passes. Pure
+# geometry: bucket the route into half-mile bins of accumulated bearing
+# change; consecutive bins over the threshold merge into one section.
+TWISTY_BIN_MI = 0.5
+TWISTY_DEG_PER_MI = 220.0
+TWISTY_MIN_LEN_MI = 1.5
+MIN_BEND_DEG = 20.0
+
+
+def find_twisty_sections(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
+    from .geo import bearing_deg
+
+    if len(coords) < 3:
+        return []
+    n_bins = int(cum[-1] / TWISTY_BIN_MI) + 1
+    bin_deg = [0.0] * n_bins
+    bin_bends = [0] * n_bins
+    prev_bearing = None
+    for i in range(1, len(coords)):
+        lon1, lat1 = coords[i - 1]
+        lon2, lat2 = coords[i]
+        b = bearing_deg(lat1, lon1, lat2, lon2)
+        if prev_bearing is not None:
+            turn = abs(((b - prev_bearing + 540) % 360) - 180)
+            idx = min(int(cum[i] / TWISTY_BIN_MI), n_bins - 1)
+            bin_deg[idx] += turn
+            if turn >= MIN_BEND_DEG:
+                bin_bends[idx] += 1
+        prev_bearing = b
+
+    flags = []
+    i = 0
+    while i < n_bins:
+        if bin_deg[i] / TWISTY_BIN_MI >= TWISTY_DEG_PER_MI:
+            j = i
+            while j + 1 < n_bins and bin_deg[j + 1] / TWISTY_BIN_MI >= TWISTY_DEG_PER_MI:
+                j += 1
+            start_mi = i * TWISTY_BIN_MI
+            end_mi = (j + 1) * TWISTY_BIN_MI
+            if end_mi - start_mi >= TWISTY_MIN_LEN_MI:
+                bends = sum(bin_bends[i : j + 1])
+                flags.append({
+                    "kind": "twisty",
+                    "description": (
+                        f"Twisty road from mile {start_mi:.0f} to mile {end_mi:.0f} - "
+                        f"about {bends} real bends. Take it unhurried."
+                    ),
+                    "lat": None,
+                    "lon": None,
+                    "length_mi": round(end_mi - start_mi, 1),
+                })
+            i = j + 1
+        else:
+            i += 1
+    # a mid-section pin helps on the map
+    for f in flags:
+        pass
+    return flags[:4]

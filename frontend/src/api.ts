@@ -31,6 +31,11 @@ export async function planTrip(params: {
   units?: Units
   tempUnit?: 'F' | 'C'
   hazardTypes?: string[]
+  departureEpoch?: number | null
+  maxStintMin?: number
+  minChargerKw?: number
+  preferredNetworks?: string[]
+  avoidFerries?: boolean
 }): Promise<PlanResponse> {
   const res = await fetch(`${API_BASE}/api/plan`, {
     method: 'POST',
@@ -57,6 +62,11 @@ export async function planTrip(params: {
       units: params.units ?? 'mi',
       temp_unit: params.tempUnit ?? 'F',
       hazard_types: params.hazardTypes ?? ['unprotected_left', 'wide_crossing', 'rail_crossing', 'lane_closure'],
+      departure_epoch: params.departureEpoch ?? null,
+      max_stint_min: params.maxStintMin ?? 0,
+      min_charger_kw: params.minChargerKw ?? 20,
+      preferred_networks: params.preferredNetworks ?? [],
+      avoid_ferries: params.avoidFerries ?? false,
     }),
   })
   if (!res.ok) {
@@ -73,11 +83,18 @@ export async function fetchRoutes(
   destination: LatLon,
   avoidTolls: boolean,
   avoidHighways: boolean,
+  avoidFerries = false,
 ): Promise<RouteAlt[]> {
   const res = await fetch(`${API_BASE}/api/routes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ origin, destination, avoid_tolls: avoidTolls, avoid_highways: avoidHighways }),
+    body: JSON.stringify({
+      origin,
+      destination,
+      avoid_tolls: avoidTolls,
+      avoid_highways: avoidHighways,
+      avoid_ferries: avoidFerries,
+    }),
   })
   if (!res.ok) throw new Error(`routes failed: ${res.status}`)
   const data = await res.json()

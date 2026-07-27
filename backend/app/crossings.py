@@ -242,11 +242,14 @@ async def wide_crossing_flags(coords: list[tuple[float, float]], cum: list[float
 CLOSURE_ON_ROUTE_MI = 0.5
 
 
-async def lane_closure_flags(coords: list[tuple[float, float]], cum: list[float]) -> list[dict]:
+async def lane_closure_flags(coords: list[tuple[float, float]], cum: list[float],
+                              at_epoch: float | None = None) -> list[dict]:
     """Active Caltrans lane/full closures sitting on (or within half a mile
     of) the route. Statewide feed is cached in providers; here it's just a
     proximity match against the polyline."""
     from .geo import cumulative_distances_mi, nearest_route_point  # local import avoids cycles
+
+    import time
 
     try:
         closures = await providers.caltrans_closures()
@@ -255,10 +258,14 @@ async def lane_closure_flags(coords: list[tuple[float, float]], cum: list[float]
     if not closures:
         return []
 
+    at = at_epoch if at_epoch is not None else time.time()
     flags = []
     seen_ids: set = set()
     for c in closures:
         if c["id"] in seen_ids:
+            continue
+        # active when you'll actually be on the road, not when you planned
+        if not (c["start_epoch"] <= at <= c["end_epoch"]):
             continue
         dist_along, offset = nearest_route_point(coords, cum, c["lat"], c["lon"])
         if offset > CLOSURE_ON_ROUTE_MI:

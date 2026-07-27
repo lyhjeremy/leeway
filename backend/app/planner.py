@@ -158,7 +158,7 @@ class RateLimited(Exception):
 _RETRY_DELAYS_S = [2, 8, 20]
 
 
-async def _safe_directions(origin, destination, avoid_tolls, avoid_highways, avoid_polygons=None):
+async def _safe_directions(origin, destination, avoid_tolls, avoid_highways, avoid_polygons=None, avoid_ferries=False):
     """None on a real ORS 404 (genuinely no route between these two points
     under the current constraints - confirmed via real testing: this
     happens both for a single candidate charger and, less obviously, for
@@ -174,7 +174,7 @@ async def _safe_directions(origin, destination, avoid_tolls, avoid_highways, avo
     "no route exists" and "stop asking for a minute" need different plans."""
     for attempt, delay in enumerate([*_RETRY_DELAYS_S, None]):
         try:
-            return await providers.directions(origin, destination, avoid_tolls, avoid_highways, avoid_polygons)
+            return await providers.directions(origin, destination, avoid_tolls, avoid_highways, avoid_polygons, avoid_ferries=avoid_ferries)
         except httpx.HTTPStatusError as e:
             # 403 is ORS's daily-quota exhaustion ("Quota exceeded") - like a
             # 429 it means "the route probably exists, stop asking", except
@@ -208,6 +208,11 @@ async def plan_trip(
     suitcases: int = 0,
     temp_override_f: float | None = None,  # trust the driver's number over the midpoint forecast
     hazard_types: tuple = ("unprotected_left", "wide_crossing", "rail_crossing", "lane_closure"),
+    departure_epoch: float | None = None,  # None = leaving now
+    max_stint_min: float = 0.0,  # 0 = no break rhythm; else no driving leg longer than this
+    preferred_networks: tuple = (),  # empty = any network
+    min_charger_kw: float = 20.0,
+    avoid_ferries: bool = False,
 ) -> dict:
     if waypoints:
         # Each waypoint splits the trip into independently-planned sub-trips
@@ -227,6 +232,9 @@ async def plan_trip(
                 arrival_target_pct=arrival_target_pct if is_last else 0.0,
                 passengers=passengers, suitcases=suitcases, temp_override_f=temp_override_f,
                 hazard_types=hazard_types,
+                departure_epoch=departure_epoch, max_stint_min=max_stint_min,
+                preferred_networks=preferred_networks, min_charger_kw=min_charger_kw,
+                avoid_ferries=avoid_ferries,
             )
             subs.append(sub)
             batt = max(sub["arrival_pct"], 1.0)  # a failed sub-trip still chains, feasible=False carries the truth
@@ -279,7 +287,7 @@ async def plan_trip(
     total_distance_mi = 0.0
     total_duration_min = 0.0
 
-    weather = await _trip_weather(origin, destination, temp_override_f)
+    weather = await _trip_weather(origin, destination, temp_override_f, departure_epoch)
     # One combined consumption adjustment: weather (live or overridden
     # temperature, wind) plus passenger/luggage load. Threaded through every
     # estimate under the historical name weather_adjustment.
@@ -292,7 +300,7 @@ async def plan_trip(
 
     for _ in range(MAX_STOPS + 1):
         try:
-            remaining = await _safe_directions(current_start, destination, avoid_tolls, avoid_highways)
+            remaining = await _safe_directions(current_start, destination, avoid_tolls, avoid_highways, avoid_ferries=avoid_ferries)
         except RateLimited:
             note = (
                 "The routing provider's usage limit interrupted planning partway - "
@@ -318,7 +326,8 @@ async def plan_trip(
             remaining["ascent_ft"], remaining["descent_ft"], reserve_pct, reserve_mi, weather_adjustment,
         )
 
-        if estimate.feasible and estimate.arrival_pct >= arrival_target_pct:
+        stint_ok = max_stint_min <= 0 or remaining["duration_min"] <= max_stint_min
+        if estimate.feasible and estimate.arrival_pct >= arrival_target_pct and stint_ok:
             leg_geometries.append(remaining["geometry"])
             leg_elevations.append(remaining["elevations_m"])
             leg_records.append({"start": current_start, "end": destination, "start_pct": current_pct, "route": remaining})
@@ -329,6 +338,12 @@ async def plan_trip(
             feasible = True
             break
 
+        # When the break rhythm (not the battery) forces this stop, search
+        # for a charger near where the stint runs out rather than where the
+        # battery would.
+        stint_cap_mi = None
+        if max_stint_min > 0 and remaining["duration_min"] > max_stint_min:
+            stint_cap_mi = remaining["distance_mi"] * (max_stint_min / remaining["duration_min"])
         chosen = None
         chosen_leg = None
         chosen_leg_estimate = None
@@ -345,6 +360,7 @@ async def plan_trip(
                 seen_ids: set = set()
                 for search_lat, search_lon in _search_centers(
                     remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, weather_adjustment, radius,
+                    cap_mi=stint_cap_mi,
                 ):
                     try:
                         found = await providers.find_charging_stations(search_lat, search_lon, radius_mi=radius)
@@ -364,13 +380,18 @@ async def plan_trip(
                     stations = [s for s in stations if s["is_supercharger"]]
                 elif charger_filter == "non_tesla":
                     stations = [s for s in stations if not s["is_supercharger"]]
+                if preferred_networks:
+                    keys = [n.lower() for n in preferred_networks]
+                    stations = [s for s in stations if any(k in s["network"].lower() for k in keys)]
+                if min_charger_kw > MIN_CHARGING_KW:
+                    stations = [s for s in stations if s["max_kw"] >= min_charger_kw]
                 if not stations:
                     continue
                 ranked = _rank_candidates(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, stop_mode, stations, weather_adjustment)
                 ranked = [c for c in ranked if c["id"] not in already_failed_ids]
 
                 for candidate in ranked[:MAX_CANDIDATES_VERIFIED_PER_RADIUS]:
-                    leg_to_stop = await _safe_directions(current_start, (candidate["lat"], candidate["lon"]), avoid_tolls, avoid_highways)
+                    leg_to_stop = await _safe_directions(current_start, (candidate["lat"], candidate["lon"]), avoid_tolls, avoid_highways, avoid_ferries=avoid_ferries)
                     if leg_to_stop is None:
                         # A specific candidate can be genuinely unroutable under
                         # the current constraints (e.g. only reachable via a
@@ -384,7 +405,8 @@ async def plan_trip(
                         full_range_mi, current_pct, leg_to_stop["distance_mi"], leg_to_stop["highway_fraction"],
                         leg_to_stop["ascent_ft"], leg_to_stop["descent_ft"], reserve_pct, reserve_mi, weather_adjustment,
                     )
-                    if leg_estimate.feasible:
+                    stint_leg_ok = max_stint_min <= 0 or leg_to_stop["duration_min"] <= max_stint_min * 1.15
+                    if leg_estimate.feasible and stint_leg_ok:
                         chosen, chosen_leg, chosen_leg_estimate = candidate, leg_to_stop, leg_estimate
                         break
                     already_failed_ids.add(candidate["id"])
@@ -458,7 +480,10 @@ async def plan_trip(
         })
 
         current_start = (chosen["lat"], chosen["lon"])
-        current_pct = charge_to_pct
+        # A rhythm-forced break can arrive ABOVE the charge target - you
+        # don't lose charge by parking, so the next leg starts at whichever
+        # is higher.
+        current_pct = max(charge_to_pct, chosen_leg_estimate.arrival_pct)
         # Defense in depth behind main.py's request-level check: if charging
         # to the target still can't clear the floor, another stop won't
         # help either - stop here honestly instead of picking the same
@@ -480,7 +505,7 @@ async def plan_trip(
 
     geometry = [pt for leg in leg_geometries for pt in leg]
     elevations_m = [e for leg in leg_elevations for e in leg]
-    point_flags = await _point_hazard_flags(geometry, hazard_types)
+    point_flags = await _point_hazard_flags(geometry, hazard_types, departure_epoch)
 
     if feasible and point_flags and safety_mode in AVOID_BUDGET_MIN and leg_records:
         budget_min = AVOID_BUDGET_MIN[safety_mode]
@@ -493,6 +518,7 @@ async def plan_trip(
             reroute = await _try_avoid_hazards(
                 leg_records, avoidable, avoid_tolls, avoid_highways,
                 full_range_mi, reserve_pct, reserve_mi, charge_to_pct, weather_adjustment,
+                avoid_ferries,
             )
             if reroute is None:
                 note = _append_note(note, (
@@ -526,9 +552,9 @@ async def plan_trip(
                     f"Rerouted around {len(avoidable)} flagged spot(s) for about "
                     f"+{max(1, round(reroute['added_min']))} min."
                 ))
-                point_flags = await _point_hazard_flags(geometry, hazard_types)
+                point_flags = await _point_hazard_flags(geometry, hazard_types, departure_epoch)
 
-    safety_flags = _static_safety_flags(origin, destination, geometry, elevations_m, weather) + point_flags
+    safety_flags = _static_safety_flags(origin, destination, geometry, elevations_m, weather, departure_epoch) + point_flags
 
     return {
         "distance_mi": round(total_distance_mi, 1),
@@ -596,7 +622,8 @@ def localize_c(plan: dict) -> dict:
     return _localize(plan, _C_PATTERNS)
 
 
-async def _point_hazard_flags(geometry: list[tuple[float, float]], hazard_types: tuple) -> list[dict]:
+async def _point_hazard_flags(geometry: list[tuple[float, float]], hazard_types: tuple,
+                               departure_epoch: float | None = None) -> list[dict]:
     """The Overpass-backed point hazards, each type individually opt-outable
     (unprotected lefts, unsignaled wide-road crossings, rail crossings).
     Separate from the static flags because the safety-avoidance pass needs
@@ -613,7 +640,7 @@ async def _point_hazard_flags(geometry: list[tuple[float, float]], hazard_types:
     if "rail_crossing" in hazard_types:
         checks.append(crossings.rail_crossing_flags(geometry, cum))
     if "lane_closure" in hazard_types:
-        checks.append(crossings.lane_closure_flags(geometry, cum))
+        checks.append(crossings.lane_closure_flags(geometry, cum, departure_epoch))
     if not checks:
         return []
     results = await asyncio.gather(*checks)
@@ -622,7 +649,7 @@ async def _point_hazard_flags(geometry: list[tuple[float, float]], hazard_types:
 
 def _static_safety_flags(origin: tuple[float, float], destination: tuple[float, float],
                           geometry: list[tuple[float, float]], elevations_m: list[float],
-                          weather: dict | None) -> list[dict]:
+                          weather: dict | None, departure_epoch: float | None = None) -> list[dict]:
     """Steep descents (real elevation, most severe first), a sun-glare check
     from the trip bearing, and a strong-wind flag from the same weather
     snapshot the range math uses. No network calls."""
@@ -632,9 +659,14 @@ def _static_safety_flags(origin: tuple[float, float], destination: tuple[float, 
     flags = safety.find_steep_descents(geometry, elevations_m, cum)
     flags.sort(key=lambda f: -(f["grade_pct"] * f["length_mi"]))
 
+    flags.extend(safety.find_twisty_sections(geometry, cum))
+
     bearing = bearing_deg(origin[0], origin[1], destination[0], destination[1])
     mid_lat, mid_lon = (origin[0] + destination[0]) / 2, (origin[1] + destination[1]) / 2
-    glare = sun.check_sun_glare(mid_lat, mid_lon, datetime.now(timezone.utc), bearing)
+    glare_time = (
+        datetime.fromtimestamp(departure_epoch, tz=timezone.utc) if departure_epoch else datetime.now(timezone.utc)
+    )
+    glare = sun.check_sun_glare(mid_lat, mid_lon, glare_time, bearing)
     if glare:
         flags.append(glare)
 
@@ -669,7 +701,8 @@ def _avoid_box(lat: float, lon: float) -> list[list[float]]:
 async def _try_avoid_hazards(leg_records: list[dict], hazards: list[dict],
                               avoid_tolls: bool, avoid_highways: bool,
                               full_range_mi: float, reserve_pct: float, reserve_mi: float,
-                              charge_to_pct: float, weather_adjustment: float) -> dict | None:
+                              charge_to_pct: float, weather_adjustment: float,
+                              avoid_ferries: bool = False) -> dict | None:
     """Re-route every leg with no-go boxes over the flagged spots, then
     re-run the full range math on the new legs. Returns the replacement
     plan pieces plus how many minutes it costs - the caller owns the
@@ -683,7 +716,7 @@ async def _try_avoid_hazards(leg_records: list[dict], hazards: list[dict],
     final_est = None
     try:
         for rec in leg_records:
-            new_route = await _safe_directions(rec["start"], rec["end"], avoid_tolls, avoid_highways, polygons)
+            new_route = await _safe_directions(rec["start"], rec["end"], avoid_tolls, avoid_highways, polygons, avoid_ferries=avoid_ferries)
             if new_route is None:
                 return None
             est = range_model.estimate_arrival(
@@ -723,7 +756,8 @@ def _search_point(route: dict, start_pct: float, full_range_mi: float, reserve_p
 
 
 def _search_centers(route: dict, start_pct: float, full_range_mi: float, reserve_pct: float,
-                     reserve_mi: float, weather_adjustment: float, radius_mi: float) -> list[tuple[float, float]]:
+                     reserve_mi: float, weather_adjustment: float, radius_mi: float,
+                     cap_mi: float | None = None) -> list[tuple[float, float]]:
     """Where to look for chargers: at the point the battery would hit the
     reserve floor, AND a second center back along the route. The second one
     matters twice over: stations just before the floor point arrive with
@@ -736,6 +770,8 @@ def _search_centers(route: dict, start_pct: float, full_range_mi: float, reserve
     target_mi = range_model.distance_to_floor_mi_elevation_aware(
         cum, route["elevations_m"], full_range_mi, start_pct, route["highway_fraction"], reserve_pct, reserve_mi, weather_adjustment,
     )
+    if cap_mi is not None:
+        target_mi = min(target_mi, cap_mi)
     centers = [target_mi]
     back_mi = target_mi - radius_mi * 0.9
     if back_mi > 5:
@@ -748,7 +784,8 @@ def _search_centers(route: dict, start_pct: float, full_range_mi: float, reserve
 
 
 async def _trip_weather(origin: tuple[float, float], destination: tuple[float, float],
-                         temp_override_f: float | None = None) -> dict | None:
+                         temp_override_f: float | None = None,
+                         departure_epoch: float | None = None) -> dict | None:
     """One trip-day snapshot at the route's rough midpoint - not per-leg or
     per-segment (weather varies continuously anyway, so a single snapshot is
     already the honest precision level here). Weather is a nice-to-have
@@ -761,7 +798,7 @@ async def _trip_weather(origin: tuple[float, float], destination: tuple[float, f
     try:
         mid_lat = (origin[0] + destination[0]) / 2
         mid_lon = (origin[1] + destination[1]) / 2
-        weather = await providers.current_weather(mid_lat, mid_lon)
+        weather = await providers.current_weather(mid_lat, mid_lon, departure_epoch)
     except httpx.HTTPError:
         weather = None
 
@@ -779,6 +816,8 @@ async def _trip_weather(origin: tuple[float, float], destination: tuple[float, f
     summary = range_model.describe_weather(temp_f, headwind)
     if temp_override_f is not None:
         summary += " (your temperature)"
+    elif weather is not None and weather.get("forecast"):
+        summary += " (forecast for your departure)"
     return {
         "adjustment": range_model.weather_adjustment_fraction(temp_f, headwind),
         "summary": summary,

@@ -14,7 +14,7 @@ from .voice import VoiceSearchError, find_stops
 # Bumped by hand on real changes so a stale deploy is visible immediately in
 # /api/health rather than assumed fixed - a lesson learned the hard way on an
 # earlier project (see [[skillcompass-flagship-project]]).
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 
 app = FastAPI(title="Leeway API")
 
@@ -89,6 +89,11 @@ class PlanRequest(BaseModel):
     hazard_types: list[Literal["unprotected_left", "wide_crossing", "rail_crossing", "lane_closure"]] = Field(
         default=["unprotected_left", "wide_crossing", "rail_crossing", "lane_closure"],
     )
+    departure_epoch: float | None = None  # unix seconds; None = leaving now
+    max_stint_min: float = Field(default=0.0, ge=0, le=600)  # 0 = off
+    preferred_networks: list[str] = Field(default=[], max_length=8)
+    min_charger_kw: float = Field(default=20.0, ge=20, le=350)
+    avoid_ferries: bool = False
     units: Literal["mi", "km"] = "mi"  # numeric fields stay miles; narrative strings get localized
     temp_unit: Literal["F", "C"] = "F"  # independent of distance - km with °F is a real combination
 
@@ -107,6 +112,18 @@ async def plan(req: PlanRequest):
             f"{floor_pct:.0f}% (your {req.reserve_mi:.0f}-mile reserve is a big share of a "
             f"{req.full_range_mi:.0f}-mile range). Raise the charge-to level or lower the reserve.",
         )
+    import time as _time
+
+    if req.departure_epoch is not None:
+        now = _time.time()
+        if not (now - 7200 <= req.departure_epoch <= now + 7 * 86400):
+            raise HTTPException(
+                422,
+                "Departure must be between two hours ago and seven days out - "
+                "the weather forecast doesn't reach further.",
+            )
+    if 0 < req.max_stint_min < 30:
+        raise HTTPException(422, "A break rhythm under 30 minutes would stop more than it drives.")
     if req.arrival_target_pct > req.charge_to_pct - 10:
         raise HTTPException(
             422,
@@ -134,6 +151,11 @@ async def plan(req: PlanRequest):
             suitcases=req.suitcases,
             temp_override_f=req.temp_override_f,
             hazard_types=tuple(req.hazard_types),
+            departure_epoch=req.departure_epoch,
+            max_stint_min=req.max_stint_min,
+            preferred_networks=tuple(n[:40] for n in req.preferred_networks),
+            min_charger_kw=req.min_charger_kw,
+            avoid_ferries=req.avoid_ferries,
         )
         if req.units == "km":
             result = localize_km(result)
@@ -153,6 +175,7 @@ class RoutesRequest(BaseModel):
     destination: LatLon
     avoid_tolls: bool = False
     avoid_highways: bool = False
+    avoid_ferries: bool = False
 
 
 @app.post("/api/routes")
@@ -166,6 +189,7 @@ async def routes(req: RoutesRequest):
                 (req.destination.lat, req.destination.lon),
                 req.avoid_tolls,
                 req.avoid_highways,
+                req.avoid_ferries,
             )
         }
     except ORSNotConfigured:

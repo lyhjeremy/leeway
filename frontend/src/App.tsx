@@ -157,6 +157,17 @@ function Planner() {
   const [suitcases, setSuitcases] = useState(0)
   const [tempOverrideOn, setTempOverrideOn] = useState(false)
   const [tempOverrideF, setTempOverrideF] = useState(70)
+  const [departureLocal, setDepartureLocal] = useState('') // '' = leaving now
+  const [maxStintMin, setMaxStintMin] = useState(0) // 0 = off, 5-min steps
+  const [minChargerKw, setMinChargerKw] = useState(20)
+  const [networks, setNetworks] = useState<Record<string, boolean>>({
+    ChargePoint: false,
+    'Electrify America': false,
+    EVgo: false,
+    Tesla: false,
+    Blink: false,
+  })
+  const [avoidFerries, setAvoidFerries] = useState(false)
   const [plan, setPlan] = useState<PlanResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -615,6 +626,11 @@ function Planner() {
         units,
         tempUnit,
         hazardTypes: Object.keys(hazardTypes).filter((k) => hazardTypes[k]),
+        departureEpoch: departureLocal ? Date.parse(departureLocal) / 1000 : null,
+        maxStintMin,
+        minChargerKw,
+        preferredNetworks: Object.keys(networks).filter((k) => networks[k]),
+        avoidFerries,
         excludedStationIds: overrides.excludedStationIds,
         waypoints: allWaypoints,
       })
@@ -727,6 +743,7 @@ function Planner() {
         { lat: destination.lat, lon: destination.lon },
         avoidTolls,
         avoidHighways,
+        avoidFerries,
       )
       setRouteAlts(alts)
       setChosenAlt(0)
@@ -809,6 +826,11 @@ function Planner() {
     suitcases > 0,
     tempOverrideOn,
     Object.values(hazardTypes).some((v) => !v),
+    departureLocal !== '',
+    maxStintMin > 0,
+    minChargerKw > 20,
+    Object.values(networks).some(Boolean),
+    avoidFerries,
   ].filter(Boolean).length
 
   return (
@@ -966,6 +988,18 @@ function Planner() {
                 </button>
               ))}
             </div>
+            <div className="recents" style={{ marginTop: 8 }}>
+              {Object.keys(networks).map((n) => (
+                <button
+                  key={n}
+                  className={`chip${networks[n] ? ' chip-on' : ''}`}
+                  onClick={() => setNetworks({ ...networks, [n]: !networks[n] })}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div className="seg-hint">Pick networks to limit stops to them - none picked means any network.</div>
           </div>
 
           <div>
@@ -1033,6 +1067,15 @@ function Planner() {
                 className="switch"
                 checked={avoidHighways}
                 onChange={(e) => setAvoidHighways(e.target.checked)}
+              />
+            </label>
+            <label className="tog">
+              <span>Avoid ferries</span>
+              <input
+                type="checkbox"
+                className="switch"
+                checked={avoidFerries}
+                onChange={(e) => setAvoidFerries(e.target.checked)}
               />
             </label>
           </div>
@@ -1112,6 +1155,66 @@ function Planner() {
                   </label>
                 </div>
                 <div className="seg-hint">Beyond the driver. A full car costs a few percent of range, not a scare number.</div>
+
+                <div className="row-label" style={{ marginTop: 12 }}>
+                  Leaving
+                </div>
+                <div className="battery-row">
+                  <input
+                    className="range-input"
+                    style={{ width: 'auto', flex: 1 }}
+                    type="datetime-local"
+                    value={departureLocal}
+                    onChange={(e) => setDepartureLocal(e.target.value)}
+                  />
+                  {departureLocal && (
+                    <button className="link-btn" onClick={() => setDepartureLocal('')}>
+                      now
+                    </button>
+                  )}
+                </div>
+                <div className="seg-hint">
+                  {departureLocal
+                    ? 'Weather, sun glare, and closures plan for this departure.'
+                    : 'Leaving now - set a time to plan against the forecast instead.'}
+                </div>
+
+                <div className="row-label" style={{ marginTop: 12 }}>
+                  Break at least every
+                </div>
+                <div className="battery-row">
+                  <span className="pct-value" style={{ width: 72 }}>
+                    {maxStintMin === 0 ? 'off' : `${Math.floor(maxStintMin / 60)}h${String(maxStintMin % 60).padStart(2, '0')}`}
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={360}
+                    step={5}
+                    value={maxStintMin}
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      setMaxStintMin(v > 0 && v < 30 ? 30 : v)
+                    }}
+                  />
+                </div>
+                <div className="seg-hint">Forces a charging stop before any driving stretch runs longer than this.</div>
+
+                <div className="row-label" style={{ marginTop: 12 }}>
+                  Minimum charger speed
+                </div>
+                <div className="battery-row">
+                  <span className="pct-value" style={{ width: 72 }}>{minChargerKw} kW</span>
+                  <input
+                    type="range"
+                    min={20}
+                    max={250}
+                    step={10}
+                    value={minChargerKw}
+                    onChange={(e) => setMinChargerKw(Number(e.target.value))}
+                  />
+                </div>
+                <div className="seg-hint">Skips chargers slower than this when picking stops.</div>
 
                 <label className="tog" style={{ marginTop: 12 }}>
                   <span>Set temperature myself</span>

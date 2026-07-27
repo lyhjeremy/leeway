@@ -87,6 +87,7 @@ async def directions(
     avoid_highways: bool = False,
     avoid_polygons: list[list[list[float]]] | None = None,
     via: tuple[float, float] | None = None,
+    avoid_ferries: bool = False,
 ) -> dict:
     """origin/destination are (lat, lon). Returns distance_mi, duration_min,
     ascent_ft, descent_ft, highway_fraction, geometry as [(lon, lat), ...],
@@ -105,6 +106,8 @@ async def directions(
         avoid_features.append("tollways")
     if avoid_highways:
         avoid_features.append("highways")
+    if avoid_ferries:
+        avoid_features.append("ferries")
 
     coordinates = [[olon, olat], [dlon, dlat]]
     body = {
@@ -225,30 +228,52 @@ async def find_charging_stations(lat: float, lon: float, radius_mi: float = 15, 
     return [s for s in out if s["lat"] is not None and s["lon"] is not None]
 
 
-async def current_weather(lat: float, lon: float) -> dict:
+async def current_weather(lat: float, lon: float, at_epoch: float | None = None) -> dict:
     """No API key needed at all - real call confirmed working. Returns a
     trip-day snapshot at one point (the route's midpoint - see planner.py),
     not per-segment; weather varies continuously along any real route, so a
-    single snapshot is already the honest level of precision here."""
+    single snapshot is already the honest level of precision here.
+
+    With at_epoch set (a departure time), the snapshot comes from the hourly
+    FORECAST at that hour instead of current conditions - leaving at 6am
+    should plan against 6am weather, not tonight's."""
+    import time as _time
+
+    use_forecast = at_epoch is not None and abs(at_epoch - _time.time()) > 3600
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "temperature_unit": "fahrenheit",
+        "wind_speed_unit": "mph",
+    }
+    if use_forecast:
+        params["hourly"] = "temperature_2m,wind_speed_10m,wind_direction_10m"
+        params["timeformat"] = "unixtime"
+        params["forecast_days"] = 8
+    else:
+        params["current"] = "temperature_2m,wind_speed_10m,wind_direction_10m"
+
     async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(
-            f"{METEO_BASE}/forecast",
-            params={
-                "latitude": lat,
-                "longitude": lon,
-                "current": "temperature_2m,wind_speed_10m,wind_direction_10m",
-                "temperature_unit": "fahrenheit",
-                "wind_speed_unit": "mph",
-            },
-        )
+        resp = await client.get(f"{METEO_BASE}/forecast", params=params)
         resp.raise_for_status()
         data = resp.json()
+
+    if use_forecast:
+        hours = data["hourly"]["time"]
+        idx = min(range(len(hours)), key=lambda i: abs(hours[i] - at_epoch))
+        return {
+            "temp_f": data["hourly"]["temperature_2m"][idx],
+            "wind_speed_mph": data["hourly"]["wind_speed_10m"][idx],
+            "wind_from_deg": data["hourly"]["wind_direction_10m"][idx],
+            "forecast": True,
+        }
 
     current = data["current"]
     return {
         "temp_f": current["temperature_2m"],
         "wind_speed_mph": current["wind_speed_10m"],
         "wind_from_deg": current["wind_direction_10m"],
+        "forecast": False,
     }
 
 
@@ -257,6 +282,7 @@ async def directions_alternatives(
     destination: tuple[float, float],
     avoid_tolls: bool = False,
     avoid_highways: bool = False,
+    avoid_ferries: bool = False,
 ) -> list[dict]:
     """Up to 3 route corridors, baseline first, as {distance_mi,
     duration_min, geometry, via}. `via` is the (lat, lon) waypoint that
@@ -274,7 +300,7 @@ async def directions_alternatives(
     error."""
     from .geo import bearing_deg, cumulative_distances_mi, destination_point, point_at_distance
 
-    baseline = await directions(origin, destination, avoid_tolls, avoid_highways)
+    baseline = await directions(origin, destination, avoid_tolls, avoid_highways, avoid_ferries=avoid_ferries)
     total = baseline["distance_mi"]
     out = [{**baseline, "via": None}]
 
@@ -286,7 +312,7 @@ async def directions_alternatives(
     for side_bearing in ((trip_bearing + 90) % 360, (trip_bearing - 90) % 360):
         via = destination_point(mid_lat, mid_lon, side_bearing, offset_mi)
         try:
-            alt = await directions(origin, destination, avoid_tolls, avoid_highways, via=via)
+            alt = await directions(origin, destination, avoid_tolls, avoid_highways, via=via, avoid_ferries=avoid_ferries)
         except httpx.HTTPError:
             continue
         too_long = alt["distance_mi"] > total * 1.5
@@ -351,9 +377,9 @@ async def caltrans_closures() -> list[dict]:
                 lon = float(loc.get("beginLongitude"))
             except (TypeError, ValueError):
                 continue
-            if not (start <= now <= end):
-                continue
             out.append({
+                "start_epoch": start,
+                "end_epoch": end,
                 "id": closure.get("closureID", ""),
                 "lat": lat,
                 "lon": lon,
