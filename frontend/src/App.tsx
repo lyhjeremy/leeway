@@ -184,10 +184,10 @@ function Planner() {
   })
   const [avoidTolls, setAvoidTolls] = useState(false)
   const [avoidHighways, setAvoidHighways] = useState(false)
-  const [showOptions, setShowOptions] = useState(false)
-  // The expanded options grew past what one scroll parses - four tabs
-  // group them by what the driver is deciding about.
-  const [optionsTab, setOptionsTab] = useState<'safety' | 'charging' | 'route' | 'trip'>('safety')
+  // The options live under four always-visible tabs grouped by what the
+  // driver is deciding about. null = all collapsed (the default): tapping a
+  // tab opens its pane, tapping the open tab closes it again.
+  const [optionsTab, setOptionsTab] = useState<'safety' | 'charging' | 'route' | 'trip' | null>(null)
   const [chargeToPct, setChargeToPct] = useState(80)
   const [reservePct, setReservePct] = useState(15)
   const [arrivalTargetPct, setArrivalTargetPct] = useState(0)
@@ -952,26 +952,19 @@ function Planner() {
       ),
   ).slice(0, Math.max(0, 3 - shownRecents.length))
 
-  // Tells you the collapsed options section is hiding something you set.
-  // Stop mode and charger filter are always visible, so they don't count.
-  const changedOptions = [
-    safetyMode !== 'avoid_quick',
-    avoidTolls,
-    avoidHighways,
-    waypoints.some(Boolean),
-    chargeToPct !== 80,
-    reservePct !== 15,
-    arrivalTargetPct > 0,
-    passengers > 0,
-    suitcases > 0,
-    tempOverrideOn,
-    Object.values(hazardTypes).some((v) => !v),
-    departureLocal !== '',
-    maxStintMin > 0,
-    minChargerKw > 20,
-    Object.values(networks).some(Boolean),
-    avoidFerries,
-  ].filter(Boolean).length
+  // A green dot on any tab whose settings differ from the defaults - a
+  // collapsed tab must never hide something the driver set.
+  const tabChanged: Record<'safety' | 'charging' | 'route' | 'trip', boolean> = {
+    safety: safetyMode !== 'avoid_quick' || Object.values(hazardTypes).some((v) => !v),
+    charging:
+      Object.values(networks).some(Boolean) ||
+      chargeToPct !== 80 ||
+      reservePct !== 15 ||
+      arrivalTargetPct > 0 ||
+      minChargerKw > 20,
+    route: avoidTolls || avoidHighways || avoidFerries || waypoints.some(Boolean),
+    trip: passengers > 0 || suitcases > 0 || tempOverrideOn || departureLocal !== '' || maxStintMin > 0,
+  }
 
   return (
     <div className="app-root">
@@ -1124,30 +1117,29 @@ function Planner() {
           </div>
 
           <div>
-            <button className="link-btn" style={{ marginLeft: 0 }} onClick={() => setShowOptions((v) => !v)}>
-              {showOptions
-                ? 'fewer options ▾'
-                : changedOptions > 0
-                  ? `more options (${changedOptions} set) ▸`
-                  : 'more options ▸'}
-            </button>
-            {showOptions && (
+            <div className="options-tabs" role="tablist">
+              {(
+                [
+                  ['safety', 'Safety'],
+                  ['charging', 'Charging'],
+                  ['route', 'Route'],
+                  ['trip', 'Trip'],
+                ] as ['safety' | 'charging' | 'route' | 'trip', string][]
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  className={value === optionsTab ? 'on' : ''}
+                  aria-expanded={value === optionsTab}
+                  onClick={() => setOptionsTab((prev) => (prev === value ? null : value))}
+                >
+                  {label}
+                  {tabChanged[value] && <span className="tab-dot" title="something set here" />}
+                  <span className="tab-caret">{value === optionsTab ? '▴' : '▾'}</span>
+                </button>
+              ))}
+            </div>
+            {optionsTab !== null && (
               <div className="options">
-          <div className="options-tabs" role="tablist">
-            {(
-              [
-                ['safety', 'Safety'],
-                ['charging', 'Charging'],
-                ['route', 'Route'],
-                ['trip', 'Trip'],
-              ] as ['safety' | 'charging' | 'route' | 'trip', string][]
-            ).map(([value, label]) => (
-              <button key={value} className={value === optionsTab ? 'on' : ''} onClick={() => setOptionsTab(value)}>
-                {label}
-              </button>
-            ))}
-          </div>
-
           {optionsTab === 'safety' && (
           <div>
             <div className="row-label">Hazard detours</div>
