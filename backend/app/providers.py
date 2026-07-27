@@ -608,17 +608,19 @@ async def overpass_raw(query: str) -> dict:
             try:
                 resp.raise_for_status()
             except httpx.HTTPStatusError:
-                _note_overpass_failure()
+                note_overpass_failure()
                 raise
             result = resp.json()
             _overpass_cache.set(query, result)
             reset_overpass_breaker()
             return result
-    _note_overpass_failure()
+    note_overpass_failure()
     raise last_error if last_error is not None else httpx.ConnectError("overpass unavailable")
 
 
-def _note_overpass_failure() -> None:
+def note_overpass_failure() -> None:
+    """Public: the planner calls this when its own budget cancels a request,
+    which never reaches the failure paths below."""
     _overpass_breaker["failures"] += 1
     if _overpass_breaker["failures"] >= OVERPASS_BREAKER_THRESHOLD:
         _overpass_breaker["open_until"] = time.time() + OVERPASS_BREAKER_COOLDOWN_S

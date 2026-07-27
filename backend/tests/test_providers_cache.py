@@ -3,6 +3,7 @@ directions ceiling most of all) - these tests prove identical requests
 genuinely skip the network, and that the cache keys on everything that
 changes the answer."""
 
+import asyncio
 import time
 
 import httpx
@@ -194,6 +195,33 @@ def test_breaker_stops_asking_a_dead_overpass_on_every_plan(counting_network, no
     with pytest.raises(providers.OverpassUnavailable):
         run(providers.overpass_raw("[out:json];node(999);out;"))
     assert len(FailoverClient.calls) == calls_before
+
+
+def test_planner_budget_timeout_trips_the_breaker(monkeypatch):
+    """The bug this catches shipped once: asyncio.wait_for CANCELS the
+    request, so overpass_raw never reaches its own failure counter. The
+    breaker stayed shut and every plan kept paying the full budget -
+    32.9s then 15.3s in production, the second exactly on the budget."""
+    from app import planner
+
+    providers.reset_overpass_breaker()
+    monkeypatch.setattr(planner, "POINT_HAZARD_BUDGET_S", 0.01)
+
+    async def never_returns(*a, **k):
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(planner.crossings, "unprotected_left_flags", never_returns)
+    monkeypatch.setattr(planner.crossings, "wide_crossing_flags", never_returns)
+    monkeypatch.setattr(planner.crossings, "rail_crossing_flags", never_returns)
+
+    geometry = [(-118.4, 34.0), (-118.3, 34.1), (-118.2, 34.2)]
+    flags = run(planner._point_hazard_flags(
+        geometry, ("unprotected_left", "wide_crossing", "rail_crossing")))
+
+    assert flags == []  # degrades to no flags, never a failed plan
+    assert providers._overpass_breaker["failures"] == 3
+    assert providers._overpass_breaker["open_until"] > 0, "breaker must open"
+    providers.reset_overpass_breaker()
 
 
 def test_breaker_still_serves_cached_answers_while_open(counting_network, no_sleep, monkeypatch):

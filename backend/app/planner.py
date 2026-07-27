@@ -710,6 +710,13 @@ async def _point_hazard_flags(geometry: list[tuple[float, float]], hazard_types:
         try:
             return await asyncio.wait_for(check, POINT_HAZARD_BUDGET_S)
         except asyncio.TimeoutError:
+            # Tell the breaker. wait_for CANCELS the request mid-flight, so
+            # overpass_raw never reaches its own failure counter - without
+            # this the breaker never opens on the one symptom that matters
+            # most, and every plan keeps paying the full budget. Measured in
+            # production before this line existed: 32.9s then 15.3s, the
+            # second landing exactly on the budget.
+            providers.note_overpass_failure()
             return []
 
     results = await asyncio.gather(*(bounded(c) for c in checks))
