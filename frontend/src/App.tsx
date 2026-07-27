@@ -1133,7 +1133,7 @@ function Planner() {
             </button>
             {showOptions && (
               <div className="options">
-          <div className="seg options-tabs">
+          <div className="options-tabs" role="tablist">
             {(
               [
                 ['safety', 'Safety'],

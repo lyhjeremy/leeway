@@ -1543,6 +1543,39 @@ input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
   top: calc(16px + env(safe-area-inset-top));
 }
 
+/* The options tabs must read as NAVIGATION, not as another setting - the
+   segmented-pill look they first shipped with made them look like a fifth
+   value picker. Underline tabs are the unambiguous convention: flat text,
+   active one inked and underlined in the brand green, sitting ON the
+   divider that separates them from the pane they control. */
+.options-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--hair);
+}
+
+.options-tabs button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 7px 10px 9px;
+  margin-bottom: -2px;
+  border-bottom: 2.5px solid transparent;
+}
+
+.options-tabs button:hover {
+  color: var(--ink2);
+}
+
+.options-tabs button.on {
+  color: var(--ink);
+  border-bottom-color: var(--go-green);
+}
+
 /* Always-visible name tags beside the map's anchor points (start, each
    stop, arrival). Mono pills on card background; pointer-events off so
    they never steal a click from the pin they annotate. */
