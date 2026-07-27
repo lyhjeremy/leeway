@@ -47,3 +47,5 @@ on a long trip often does) — see `app/planner.py`'s docstring and
 against the pure math (`range_model.py`) and against a local server with no
 key configured (confirms the 503 path works), but the actual geocode/routing
 round-trip needs a real `ORS_API_KEY` to verify end to end.
+
+<!-- deploy nudge: 0.16.5 -->
