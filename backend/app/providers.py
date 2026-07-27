@@ -82,6 +82,12 @@ _geocode_cache = _TTLCache(ttl_s=24 * 3600, max_entries=256)
 # a whole day run on stale data.
 _stations_cache = _TTLCache(ttl_s=1800, max_entries=128)
 _weather_cache = _TTLCache(ttl_s=900, max_entries=64)
+# OSM signals/lanes/rails change on month scales, and the public Overpass
+# instance is flaky under load - a replan that got flags a minute ago could
+# silently get none (seen live: an unsignaled 7-lane crossing flagged on one
+# plan, absent on the next, so the detour never fired). Caching successes
+# makes hazard detection consistent across replans of the same route.
+_overpass_cache = _TTLCache(ttl_s=3600, max_entries=64)
 
 
 class ORSNotConfigured(Exception):
@@ -531,7 +537,12 @@ async def caltrans_closures() -> list[dict]:
 async def overpass_raw(query: str) -> dict:
     """Run any Overpass QL query with the retry loop this flaky public
     instance needs (see search_overpass's docstring for the evidence).
-    Shared by the POI search and the safety-flag crossing checks."""
+    Shared by the POI search and the safety-flag crossing checks. Real
+    responses are cached; the retries-exhausted empty fallback is NOT -
+    it's a transient outage, not an answer."""
+    cached = _overpass_cache.get(query)
+    if cached is not None:
+        return cached
     headers = {"User-Agent": "Leeway-EV-Trip-Planner/0.1 (github.com/lyhjeremy/leeway)"}
     async with httpx.AsyncClient(timeout=30) as client:
         for attempt in range(4):
@@ -540,7 +551,9 @@ async def overpass_raw(query: str) -> dict:
                 await asyncio.sleep(2 * (attempt + 1))
                 continue
             resp.raise_for_status()
-            return resp.json()
+            result = resp.json()
+            _overpass_cache.set(query, result)
+            return result
     return {"elements": []}
 
 

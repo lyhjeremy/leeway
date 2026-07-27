@@ -83,12 +83,14 @@ def counting_network(monkeypatch):
     providers._stations_cache.clear()
     providers._geocode_cache.clear()
     providers._weather_cache.clear()
+    providers._overpass_cache.clear()
     CountingClient.requests = 0
     yield
     providers._directions_cache.clear()
     providers._stations_cache.clear()
     providers._geocode_cache.clear()
     providers._weather_cache.clear()
+    providers._overpass_cache.clear()
 
 
 def test_identical_directions_requests_hit_network_once(counting_network):
@@ -106,6 +108,18 @@ def test_directions_cache_keys_on_options(counting_network):
     run(providers.directions((34.05, -118.24), (37.77, -122.42), avoid_polygons=[[[0, 0], [0, 1], [1, 1], [0, 0]]]))
     run(providers.directions((34.05, -118.24), (37.77, -122.42), via=(35.0, -119.0)))
     assert CountingClient.requests == 4
+
+
+def test_identical_overpass_queries_hit_network_once(counting_network):
+    """Hazard detection must be consistent across replans - the flaky public
+    Overpass instance returning flags on one plan and nothing on the next
+    meant the detour pass silently had nothing to avoid (seen live)."""
+    a = run(providers.overpass_raw('[out:json];node(1);out;'))
+    b = run(providers.overpass_raw('[out:json];node(1);out;'))
+    assert CountingClient.requests == 1
+    assert a == b
+    run(providers.overpass_raw('[out:json];node(2);out;'))
+    assert CountingClient.requests == 2
 
 
 def test_identical_station_searches_hit_network_once(counting_network):

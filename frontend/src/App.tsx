@@ -1071,8 +1071,10 @@ function Planner() {
             </div>
             <div className="seg-hint">
               {safetyMode === 'flag_only'
-                ? 'Checked hazards get flagged on the map, route unchanged.'
-                : `Reroutes around checked hazards when the detour adds ${safetyMode === 'avoid_quick' ? '3' : '10'} minutes or less.`}
+                ? 'For each hazard below: ON = warn about it on the map (the route itself never changes in this mode). OFF = don’t check for it.'
+                : `For each hazard below: ON = route around it when the detour adds ${
+                    safetyMode === 'avoid_quick' ? '3' : '10'
+                  } minutes or less, otherwise warn about it. OFF = don’t check for it.`}
             </div>
             <div className="toggles" style={{ marginTop: 10 }}>
               {(
