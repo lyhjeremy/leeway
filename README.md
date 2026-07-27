@@ -61,7 +61,8 @@ repo is the codebase only).
   integration (`render.yaml` at the repo root).
 
 Data sources: OpenRouteService (routing, geocoding, elevation), Open Charge
-Map (stations), Open-Meteo (weather), Overpass/OSM (POI search), Caltrans
+Map (stations), Open-Meteo (weather), Overpass/OSM (POI search), the US
+Census geocoder (exact house numbers Pelias lacks), Caltrans
 LCS (lane closures), Gemini (voice query parsing). Coverage is California
 for now. Successful provider responses are cached in-process (routes 6h,
 stations 30min, weather 15min) to stretch the free-tier quotas — the ORS
@@ -87,7 +88,7 @@ cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload -
 
 ## Tests
 
-77 backend tests run fully offline against a faked provider layer
+The backend test suite (74 and counting) runs fully offline against a faked provider layer
 (synthetic routes with configurable speed/elevation/highway mix, canned
 stations, weather, OSM and Caltrans data) — they cover the range math,
 every safety-flag detector, the planner end to end including its honest

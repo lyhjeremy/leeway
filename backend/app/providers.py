@@ -10,6 +10,7 @@ returned real drive_through/brand tags).
 import asyncio
 import json
 import os
+import re
 import time
 
 import httpx
@@ -92,6 +93,37 @@ def _require_key():
         raise ORSNotConfigured("ORS_API_KEY is not set")
 
 
+_HOUSE_NUMBER_QUERY = re.compile(r"^\s*\d+\s+\S")
+
+
+async def _census_address_match(query: str) -> dict | None:
+    """Exact house-number geocoding via the US Census Bureau's free, keyless
+    geocoder - it INTERPOLATES numbers along TIGER street ranges, which the
+    hosted ORS/Pelias geocoder doesn't do (confirmed live: '555 Levering Ave'
+    only ever came back street-level from Pelias while Census placed it).
+    US-only, which is fine for a California-only product. Returns
+    {label, lat, lon} or None; any failure means None - Pelias results stand."""
+    address = query if "," in query else f"{query}, CA"
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            resp = await client.get(
+                "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress",
+                params={"address": address, "benchmark": "Public_AR_Current", "format": "json"},
+            )
+            resp.raise_for_status()
+            matches = resp.json().get("result", {}).get("addressMatches", [])
+    except (httpx.HTTPError, ValueError):
+        return None
+    if not matches:
+        return None
+    m = matches[0]
+    # "555 LEVERING AVE, LOS ANGELES, CA, 90024" -> "555 Levering Ave, Los Angeles, CA 90024"
+    label = m.get("matchedAddress", "").title()
+    label = re.sub(r"\bCa\b", "CA", label)
+    label = re.sub(r", CA, (\d{5})", r", CA \1", label)
+    return {"label": label, "lat": m["coordinates"]["y"], "lon": m["coordinates"]["x"]}
+
+
 async def geocode(query: str) -> list[dict]:
     _require_key()
     cache_key = query.strip().lower()
@@ -115,9 +147,20 @@ async def geocode(query: str) -> list[dict]:
         data = resp.json()
 
     out = []
+    pelias_has_house_number = False
     for feat in data.get("features", []):
         lon, lat = feat["geometry"]["coordinates"][:2]
+        if feat.get("properties", {}).get("housenumber"):
+            pelias_has_house_number = True
         out.append({"label": feat["properties"].get("label", query), "lat": lat, "lon": lon})
+
+    # The driver typed a house number but Pelias only matched the street:
+    # ask Census for the exact address and put it first.
+    if _HOUSE_NUMBER_QUERY.match(query) and not pelias_has_house_number:
+        exact = await _census_address_match(query)
+        if exact is not None:
+            out.insert(0, exact)
+
     _geocode_cache.set(cache_key, out)
     return out
 
