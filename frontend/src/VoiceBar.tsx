@@ -111,7 +111,15 @@ export default function VoiceBar({ origin, destination, units, onAddStop }: Prop
                   {!r.within_budget && ' (over your ask)'}
                 </div>
               </div>
-              <button className="link-btn" onClick={() => onAddStop(r.lat, r.lon, r.name)}>
+              <button
+                className="link-btn"
+                onClick={() =>
+                  // Middle dot, not a comma: waypoint titles get trimmed at
+                  // the first comma for display, which would strip the
+                  // address right back off.
+                  onAddStop(r.lat, r.lon, r.address ? `${r.name} · ${r.address.split(',')[0]}` : r.name)
+                }
+              >
                 add
               </button>
             </div>
