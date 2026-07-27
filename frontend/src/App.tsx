@@ -185,6 +185,9 @@ function Planner() {
   const [avoidTolls, setAvoidTolls] = useState(false)
   const [avoidHighways, setAvoidHighways] = useState(false)
   const [showOptions, setShowOptions] = useState(false)
+  // The expanded options grew past what one scroll parses - four tabs
+  // group them by what the driver is deciding about.
+  const [optionsTab, setOptionsTab] = useState<'safety' | 'charging' | 'route' | 'trip'>('safety')
   const [chargeToPct, setChargeToPct] = useState(80)
   const [reservePct, setReservePct] = useState(15)
   const [arrivalTargetPct, setArrivalTargetPct] = useState(0)
@@ -1130,6 +1133,22 @@ function Planner() {
             </button>
             {showOptions && (
               <div className="options">
+          <div className="seg options-tabs">
+            {(
+              [
+                ['safety', 'Safety'],
+                ['charging', 'Charging'],
+                ['route', 'Route'],
+                ['trip', 'Trip'],
+              ] as ['safety' | 'charging' | 'route' | 'trip', string][]
+            ).map(([value, label]) => (
+              <button key={value} className={value === optionsTab ? 'on' : ''} onClick={() => setOptionsTab(value)}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {optionsTab === 'safety' && (
           <div>
             <div className="row-label">Hazard detours</div>
             <div className="seg">
@@ -1167,7 +1186,10 @@ function Planner() {
               ))}
             </div>
           </div>
+          )}
 
+          {optionsTab === 'charging' && (
+          <>
           <div>
             <div className="row-label">Charger networks</div>
             <div className="recents" style={{ marginTop: 8 }}>
@@ -1182,49 +1204,6 @@ function Planner() {
               ))}
             </div>
             <div className="seg-hint">Pick networks to limit stops to them - none picked means any network.</div>
-          </div>
-
-          <div>
-            <div className="row-label">Your stops along the way</div>
-            <div className="seg-hint" style={{ marginTop: 0 }}>
-              Search one in the route list up top, say it into the mic on the map, or pick a spot by hand:
-            </div>
-            {waypoints.length < 3 && (
-              <button className="link-btn" style={{ marginLeft: 0, marginTop: 6 }} onClick={() => setPickingStop((v) => !v)}>
-                {pickingStop ? 'click the map to add it…' : '+ add a stop by clicking the map'}
-              </button>
-            )}
-          </div>
-
-
-          <div className="toggles">
-            <label className="tog">
-              <span>Allow toll roads</span>
-              <input
-                type="checkbox"
-                className="switch"
-                checked={!avoidTolls}
-                onChange={(e) => setAvoidTolls(!e.target.checked)}
-              />
-            </label>
-            <label className="tog">
-              <span>Avoid highways</span>
-              <input
-                type="checkbox"
-                className="switch"
-                checked={avoidHighways}
-                onChange={(e) => setAvoidHighways(e.target.checked)}
-              />
-            </label>
-            <label className="tog">
-              <span>Avoid ferries</span>
-              <input
-                type="checkbox"
-                className="switch"
-                checked={avoidFerries}
-                onChange={(e) => setAvoidFerries(e.target.checked)}
-              />
-            </label>
           </div>
 
           <div className="advanced">
@@ -1277,6 +1256,74 @@ function Planner() {
                 <div className="seg-hint">Adds a charging stop near the end if needed - useful when there's no charging at your destination.</div>
 
                 <div className="row-label" style={{ marginTop: 12 }}>
+                  Minimum charger speed
+                </div>
+                <div className="battery-row">
+                  <span className="pct-value" style={{ width: 72 }}>{minChargerKw} kW</span>
+                  <input
+                    type="range"
+                    min={20}
+                    max={250}
+                    step={10}
+                    value={minChargerKw}
+                    onChange={(e) => setMinChargerKw(Number(e.target.value))}
+                  />
+                </div>
+                <div className="seg-hint">Skips chargers slower than this when picking stops.</div>
+          </div>
+          </>
+          )}
+
+          {optionsTab === 'route' && (
+          <>
+          <div>
+            <div className="row-label">Your stops along the way</div>
+            <div className="seg-hint" style={{ marginTop: 0 }}>
+              Search one in the route list up top, say it into the mic on the map, or pick a spot by hand:
+            </div>
+            {waypoints.length < 3 && (
+              <button className="link-btn" style={{ marginLeft: 0, marginTop: 6 }} onClick={() => setPickingStop((v) => !v)}>
+                {pickingStop ? 'click the map to add it…' : '+ add a stop by clicking the map'}
+              </button>
+            )}
+          </div>
+
+
+          <div className="toggles">
+            <label className="tog">
+              <span>Allow toll roads</span>
+              <input
+                type="checkbox"
+                className="switch"
+                checked={!avoidTolls}
+                onChange={(e) => setAvoidTolls(!e.target.checked)}
+              />
+            </label>
+            <label className="tog">
+              <span>Avoid highways</span>
+              <input
+                type="checkbox"
+                className="switch"
+                checked={avoidHighways}
+                onChange={(e) => setAvoidHighways(e.target.checked)}
+              />
+            </label>
+            <label className="tog">
+              <span>Avoid ferries</span>
+              <input
+                type="checkbox"
+                className="switch"
+                checked={avoidFerries}
+                onChange={(e) => setAvoidFerries(e.target.checked)}
+              />
+            </label>
+          </div>
+          </>
+          )}
+
+          {optionsTab === 'trip' && (
+          <div className="advanced">
+                <div className="row-label" style={{ marginTop: 10 }}>
                   Load
                 </div>
                 <div className="load-row">
@@ -1347,22 +1394,6 @@ function Planner() {
                 </div>
                 <div className="seg-hint">Forces a charging stop before any driving stretch runs longer than this.</div>
 
-                <div className="row-label" style={{ marginTop: 12 }}>
-                  Minimum charger speed
-                </div>
-                <div className="battery-row">
-                  <span className="pct-value" style={{ width: 72 }}>{minChargerKw} kW</span>
-                  <input
-                    type="range"
-                    min={20}
-                    max={250}
-                    step={10}
-                    value={minChargerKw}
-                    onChange={(e) => setMinChargerKw(Number(e.target.value))}
-                  />
-                </div>
-                <div className="seg-hint">Skips chargers slower than this when picking stops.</div>
-
                 <label className="tog" style={{ marginTop: 12 }}>
                   <span>Set temperature myself</span>
                   <input
@@ -1387,6 +1418,7 @@ function Planner() {
                   <div className="seg-hint">Live weather at the route midpoint is used unless you set your own.</div>
                 )}
           </div>
+          )}
               </div>
             )}
           </div>
