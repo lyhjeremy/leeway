@@ -1464,10 +1464,16 @@ input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
   }
 
   /* The voice bar owns the map's top edge on mobile - the chip row moves
-     to the bottom, above the attribution button. */
+     to the bottom, above the attribution button.
+
+     52px, not 44: 44 assumed the attribution stays collapsed to its (i)
+     button. When it is expanded the credit line wraps to two rows on a 360px
+     phone (44px tall) and sat on top of these buttons. App.tsx now holds the
+     attribution shut, but that fights MapLibre's own class handling, so this
+     clears a two-row attribution regardless of who wins. Costs 8px of map. */
   .float-chips {
     top: auto;
-    bottom: 44px;
+    bottom: 52px;
     width: min(384px, calc(100vw - 28px));
     gap: 8px;
   }
