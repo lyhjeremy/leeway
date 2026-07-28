@@ -43,9 +43,17 @@ on a long trip often does) — see `app/planner.py`'s docstring and
 `app/range_model.py` for the honest, documented range-estimate assumptions
 (none of it pretends to be a physics simulator).
 
-**Not yet live-tested against the real ORS API** — built and unit-tested
-against the pure math (`range_model.py`) and against a local server with no
-key configured (confirms the 503 path works), but the actual geocode/routing
-round-trip needs a real `ORS_API_KEY` to verify end to end.
+Live-tested against the real ORS API since. Real plans that have run end to
+end in production include Los Angeles → Santa Barbara, Chicago → Detroit,
+New York → Boston and Denver → Salt Lake City, the last of which is what
+surfaced the sparse-region planner bugs documented in the root README.
+
+**The 40-calls-per-minute limit is the binding constraint, not the daily
+2,000.** Its backoff outlasts Render's ~100s proxy timeout, so a plan that
+exceeds it spends quota and still returns "planning took too long" to the
+driver. `MAX_VERIFY_CALLS_PER_PLAN` in `app/planner.py` bounds one plan's
+spend for that reason. Trips needing nine or ten charging stops cannot be
+verified inside the minute limit at all and will end with the rate-limit
+note; that is arithmetic, and self-hosted routing is what removes it.
 
 <!-- deploy nudge: 0.16.5 -->

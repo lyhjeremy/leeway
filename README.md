@@ -110,6 +110,49 @@ full cost of discovering the same outage. Safety flags are the one part
 of a plan allowed to go missing, because a plan that never returns is
 worse than a plan without warnings.
 
+Past 60 miles the hazard search is **windowed**. Spreading a fixed point
+budget over a whole route meant a 600-mile trip got one point every four
+miles, so Overpass was being asked about a chain of chords that cut corners
+by miles inside a 30m buffer — a near-empty result, which reads as "safe".
+The search now runs only within 6 miles of each leg join (origin, every
+stop, destination), which is where surface-street hazards exist at all.
+Each window gets its own `around:` clause: concatenating them would have
+Overpass draw a corridor straight across the gap between two windows 200
+miles apart.
+
+## What constrains it
+
+The free tier is the ceiling and it is a real one. ORS allows 2,000
+directions calls a day and **40 a minute**. A two-stop plan uses under ten;
+a hard one in sparse country uses dozens. The minute limit bites first,
+because its backoff outlasts Render's ~100s proxy — an unbounded plan would
+spend the quota and still show "planning took too long". Three caps keep it
+honest:
+
+- `MAX_VERIFY_CALLS_PER_PLAN = 60` — past this the plan stops and says so,
+  rather than stalling. This is the cost guard.
+- `MAX_STOPS = 10` — enough for 600 miles in a car down to ~150 real miles,
+  the driver this exists for. Six silently truncated that plan.
+- `POINT_HAZARD_BUDGET_S = 15` per hazard check, after which it degrades to
+  no flags.
+
+Trips genuinely needing nine or ten stops will hit the minute limit and end
+with the rate-limit note. That is arithmetic rather than a bug: ten stops
+cannot be verified in under 40 calls. Paying for routing is what removes it.
+
+Two more things learned by planning real trips outside California:
+
+- A chosen stop must advance the route by `MIN_STOP_PROGRESS_MI` and no
+  station may be used twice. Without both, a Denver → Salt Lake City plan
+  picked a charger at its own current position, charged to 80%, and looped —
+  burning every stop slot and stalling at 360 of 520 miles. Charger density
+  hid it in California.
+- ORS refuses `avoid_polygons` past 150km, and `_safe_directions` reads the
+  refusal as "no route". Since a 205-mile car runs 110-125 miles between
+  stops, hazard avoidance was silently off on most legs of most trips. Legs
+  over `ORS_AVOID_POLYGON_MAX_MI` are now split at real points on their own
+  geometry and each piece routed with the polygons in place.
+
 ## iOS app
 
 The same frontend ships as a native iOS app: a Capacitor shell (in
@@ -129,7 +172,7 @@ cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload -
 
 ## Tests
 
-The backend test suite (85 and counting) runs fully offline against a faked
+The backend test suite (97 and counting) runs fully offline against a faked
 provider layer (synthetic routes with configurable speed/elevation/highway
 mix, canned stations, weather, OSM and Caltrans data) — they cover the range
 math,
