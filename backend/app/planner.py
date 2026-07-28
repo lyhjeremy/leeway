@@ -44,7 +44,12 @@ STOP_MODE_WINDOW_MI = 20
 # MAX_VERIFY_CALLS_PER_PLAN below bounds the API spend directly; MAX_STOPS now
 # only has to stop the loop running away.
 MAX_STOPS = 10
-MAX_CANDIDATES_VERIFIED_PER_RADIUS = 6  # real-directions calls are not free API quota
+# Kept at 8, not trimmed. Dropping it to 6 to save quota measurably worsened
+# plans in exactly the places that need the tries: a Denver -> Salt Lake City
+# retest settled for two truck-stop chargers where the wider search had found
+# the Rawlins and Rock Springs Superchargers. MAX_VERIFY_CALLS_PER_PLAN is the
+# cost guard; squeezing this number just buys worse routes in sparse country.
+MAX_CANDIDATES_VERIFIED_PER_RADIUS = 8
 
 # ORS allows 40 directions calls per minute, and the backoff for exceeding it
 # is long enough that Render's ~100s proxy cuts the request first - the driver
