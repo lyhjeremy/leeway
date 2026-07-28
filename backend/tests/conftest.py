@@ -95,6 +95,15 @@ class FakeWorld:
     async def _directions(self, origin, destination, avoid_tolls=False, avoid_highways=False,
                           avoid_polygons=None, via=None, avoid_ferries=False):
         self.directions_calls.append((origin, destination))
+        # ORS rejects avoid_polygons past ~150km with a 2004 error, returned as
+        # an HTTP 400. The fake owes callers that limit, or the planner's
+        # long-leg handling is never actually exercised here.
+        if avoid_polygons and haversine_mi(*origin, *destination) > 93.0:
+            req = httpx.Request("POST", providers.ORS_BASE)
+            raise httpx.HTTPStatusError(
+                "fake 2004: avoid_polygons too large", request=req,
+                response=httpx.Response(400, request=req),
+            )
         if self.directions_script:
             status = self.directions_script.pop(0)
             if status is not None:

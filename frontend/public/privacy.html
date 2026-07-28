@@ -26,7 +26,7 @@
   (battery %, range, preferences) are sent to Leeway's own backend, which
   queries routing (OpenRouteService), charging stations (Open Charge Map),
   weather (Open-Meteo), map data (OpenStreetMap/Overpass), and Caltrans road
-  closures to build the plan. These requests contain trip coordinates but no
+  closures (California routes only) to build the plan. These requests contain trip coordinates but no
   identity, and Leeway keeps no record of them beyond short-lived caches.
   Voice/text stop searches are parsed by Google's Gemini API; only the search
   phrase and route area are sent.</p>

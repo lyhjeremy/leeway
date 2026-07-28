@@ -1365,7 +1365,7 @@ function Planner() {
                 </div>
                 <div className="seg-hint">
                   {departureLocal
-                    ? 'Weather, sun glare, and closures plan for this departure.'
+                    ? 'Weather, sun glare, and closures plan for this departure, read in this device\u2019s time zone.'
                     : 'Leaving now - set a time to plan against the forecast instead.'}
                 </div>
 

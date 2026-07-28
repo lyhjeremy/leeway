@@ -38,8 +38,20 @@ from .geo import bearing_deg, cumulative_distances_mi, haversine_mi, headwind_co
 # at the first radius that yields a verified candidate.
 SEARCH_RADII_MI = [15, 30, 50, 75]
 STOP_MODE_WINDOW_MI = 20
-MAX_STOPS = 6  # safety cap - if a real trip needs more than this, say so rather than loop forever
-MAX_CANDIDATES_VERIFIED_PER_RADIUS = 8  # real-directions calls are not free API quota
+# Ten covers 600 miles in a car whose real range has fallen to ~150 - the
+# driver this product exists for, who needs ~9 stops to do it. Six truncated
+# that plan silently. This is no longer the cost guard it used to be, because
+# MAX_VERIFY_CALLS_PER_PLAN below bounds the API spend directly; MAX_STOPS now
+# only has to stop the loop running away.
+MAX_STOPS = 10
+MAX_CANDIDATES_VERIFIED_PER_RADIUS = 6  # real-directions calls are not free API quota
+
+# ORS allows 40 directions calls per minute, and the backoff for exceeding it
+# is long enough that Render's ~100s proxy cuts the request first - the driver
+# gets "planning took too long" and the quota is spent anyway. This bounds one
+# plan's verification calls so a pathological route returns a partial plan
+# with an honest note instead. Generous: a normal two-stop plan uses under 10.
+MAX_VERIFY_CALLS_PER_PLAN = 60
 
 # Excludes Level 1/2 chargers (typically <=19.2kW) from consideration - a
 # real find, driving this constant: a search near a genuine I-5 stop once
@@ -55,6 +67,15 @@ MIN_CHARGING_KW = 20
 # distance-along-route. A detour costs at least the drive out and back
 # (2x), plus it's slower non-highway driving - hence 2.5.
 OFFSET_PENALTY = 2.5
+
+# A chosen stop has to actually get you down the road. Without this the
+# planner can pick a charger at its own current position - trivially
+# "reachable", so it verifies, charges to 80%, and loops having moved zero
+# miles. Found on a real Denver -> Salt Lake City plan that burned every stop
+# slot and stalled at 360 of 520 miles, having chosen the same Wyoming
+# Supercharger twice in a row. California's charger density hid it: the ranked
+# list almost always had something genuinely forward in it.
+MIN_STOP_PROGRESS_MI = 8.0
 
 # Two stations within this distance of each other are one physical location
 # (e.g. three OCM entries for the same Fillmore parking lot) - verifying
@@ -77,6 +98,15 @@ HAZARD_ENDPOINT_CLEARANCE_MI = 0.15
 
 # Half-size of the square no-go box drawn around an avoided hazard, meters.
 AVOID_BOX_HALF_M = 70.0
+
+# ORS rejects avoid_polygons on requests longer than ~150km with a 2004 error
+# (see the note in providers.directions_alternatives). _safe_directions reads
+# that as "no route", so before this the whole avoidance pass gave up on any
+# leg over ~93 miles and told the driver no detour existed - blaming the road
+# for a provider limit. A 205-mile car runs 110-125 miles between stops, so
+# that was most legs of most real trips. Long legs are now routed in pieces
+# that each stay under the cap.
+ORS_AVOID_POLYGON_MAX_MI = 85.0
 
 
 def _rank_candidates(route: dict, start_pct: float, full_range_mi: float,
@@ -309,6 +339,9 @@ async def plan_trip(
         }
 
     stops_out = []
+    used_station_ids: set = set()
+    verify_calls = 0
+    verify_budget_spent = False
     leg_geometries = []
     leg_elevations = []
     # Parallel record of each leg's endpoints + route, kept so the
@@ -430,9 +463,18 @@ async def plan_trip(
                 if not stations:
                     continue
                 ranked = _rank_candidates(remaining, current_pct, full_range_mi, reserve_pct, reserve_mi, stop_mode, stations, weather_adjustment)
-                ranked = [c for c in ranked if c["id"] not in already_failed_ids]
+                ranked = [
+                    c for c in ranked
+                    if c["id"] not in already_failed_ids
+                    and c["id"] not in used_station_ids
+                    and c["distance_along_route_mi"] >= MIN_STOP_PROGRESS_MI
+                ]
 
                 for candidate in ranked[:MAX_CANDIDATES_VERIFIED_PER_RADIUS]:
+                    if verify_calls >= MAX_VERIFY_CALLS_PER_PLAN:
+                        verify_budget_spent = True
+                        break
+                    verify_calls += 1
                     leg_to_stop = await _safe_directions(current_start, (candidate["lat"], candidate["lon"]), avoid_tolls, avoid_highways, avoid_ferries=avoid_ferries)
                     if leg_to_stop is None:
                         # A specific candidate can be genuinely unroutable under
@@ -453,7 +495,7 @@ async def plan_trip(
                         break
                     already_failed_ids.add(candidate["id"])
 
-                if chosen is not None:
+                if chosen is not None or verify_budget_spent:
                     break
         except RateLimited:
             note = (
@@ -471,7 +513,13 @@ async def plan_trip(
             break
 
         if chosen is None:
-            if ocm_failed:
+            if verify_budget_spent:
+                note = (
+                    "This route needed more charger checks than one plan is allowed to make, "
+                    "so planning stopped here rather than stall. Everything above is real. "
+                    "Try a shorter trip, or set a higher minimum charger speed to narrow the search."
+                )
+            elif ocm_failed:
                 note = (
                     "The charging-station data source failed while planning this leg - "
                     "there may well be a charger here that couldn't be checked. Try again shortly."
@@ -525,6 +573,8 @@ async def plan_trip(
             "leg_drive_min": round(chosen_leg["duration_min"]),
         })
 
+        if chosen["id"] is not None:
+            used_station_ids.add(chosen["id"])
         current_start = (chosen["lat"], chosen["lon"])
         # A rhythm-forced break can arrive ABOVE the charge target - you
         # don't lose charge by parking, so the next leg starts at whichever
@@ -806,6 +856,64 @@ def _avoid_box(lat: float, lon: float) -> list[list[float]]:
     ]
 
 
+async def _avoid_route(rec: dict, polygons: list, avoid_tolls: bool,
+                        avoid_highways: bool, avoid_ferries: bool) -> dict | None:
+    """One leg, re-routed with the no-go boxes in place. Legs longer than
+    ORS_AVOID_POLYGON_MAX_MI are split at real points on their own geometry
+    and each piece routed for real, then joined. Every number in the result
+    is a routing result - nothing is a proportional slice of the whole, which
+    is the mistake this module's docstring exists to warn about."""
+    original = rec["route"]
+    total_mi = original["distance_mi"]
+    if total_mi <= ORS_AVOID_POLYGON_MAX_MI:
+        return await _safe_directions(rec["start"], rec["end"], avoid_tolls,
+                                      avoid_highways, polygons, avoid_ferries=avoid_ferries)
+
+    pieces_n = -(-int(total_mi) // int(ORS_AVOID_POLYGON_MAX_MI))
+    coords = original["geometry"]
+    cum = cumulative_distances_mi(coords)
+    # Split points taken off the original polyline, so each piece follows the
+    # route the driver was already going to take.
+    waypoints = [rec["start"]]
+    for i in range(1, pieces_n):
+        lon, lat = point_at_distance(coords, cum, total_mi * i / pieces_n)
+        waypoints.append((lat, lon))
+    waypoints.append(rec["end"])
+
+    legs = []
+    for a, b in zip(waypoints, waypoints[1:]):
+        piece = await _safe_directions(a, b, avoid_tolls, avoid_highways,
+                                       polygons, avoid_ferries=avoid_ferries)
+        if piece is None:
+            return None
+        legs.append(piece)
+    return _join_routes(legs)
+
+
+def _join_routes(legs: list[dict]) -> dict:
+    """Concatenate real route pieces into one leg. highway_fraction is
+    distance-weighted; everything else adds."""
+    distance = sum(l["distance_mi"] for l in legs)
+    geometry: list = []
+    elevations: list = []
+    for l in legs:
+        # drop the duplicated joint vertex
+        geometry.extend(l["geometry"] if not geometry else l["geometry"][1:])
+        elevations.extend(l["elevations_m"] if not elevations else l["elevations_m"][1:])
+    return {
+        "distance_mi": distance,
+        "duration_min": sum(l["duration_min"] for l in legs),
+        "ascent_ft": sum(l["ascent_ft"] for l in legs),
+        "descent_ft": sum(l["descent_ft"] for l in legs),
+        "highway_fraction": (
+            sum(l["highway_fraction"] * l["distance_mi"] for l in legs) / distance
+            if distance else 0.0
+        ),
+        "geometry": geometry,
+        "elevations_m": elevations,
+    }
+
+
 async def _try_avoid_hazards(leg_records: list[dict], hazards: list[dict],
                               avoid_tolls: bool, avoid_highways: bool,
                               full_range_mi: float, reserve_pct: float, reserve_mi: float,
@@ -824,7 +932,7 @@ async def _try_avoid_hazards(leg_records: list[dict], hazards: list[dict],
     final_est = None
     try:
         for rec in leg_records:
-            new_route = await _safe_directions(rec["start"], rec["end"], avoid_tolls, avoid_highways, polygons, avoid_ferries=avoid_ferries)
+            new_route = await _avoid_route(rec, polygons, avoid_tolls, avoid_highways, avoid_ferries)
             if new_route is None:
                 return None
             est = range_model.estimate_arrival(

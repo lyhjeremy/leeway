@@ -172,9 +172,12 @@ def test_arrival_target_adds_a_late_stop(world):
 
 
 def test_stop_cap_is_honest(world):
-    # A 600-mile trip on a tiny effective range: hits MAX_STOPS and says so
-    world.stations_along(LA, SF, every_mi=15)
-    plan = _plan(world, full_range_mi=60.0, battery_pct=100.0, reserve_mi=5.0, reserve_pct=10.0)
+    # Beyond MAX_STOPS the plan must stop and say so rather than loop. The
+    # range here is deliberately absurd: MAX_STOPS rose to 10 so that a real
+    # degraded battery (~150 mi) can finish 600 miles, and this case has to
+    # stay past the cap to keep testing the cap.
+    world.stations_along(LA, SF, every_mi=10)
+    plan = _plan(world, full_range_mi=35.0, battery_pct=100.0, reserve_mi=2.0, reserve_pct=10.0)
     assert not plan["feasible"]
     assert "more than" in plan["note"]
 
@@ -272,3 +275,107 @@ def test_localize_km_and_c():
 
     c = planner.localize_c(dict(plan, safety_flags=[dict(plan["safety_flags"][0])], weather=dict(plan["weather"])))
     assert "23°C" in c["weather"]["summary"]
+
+
+# --- sparse-charging regions (the interior West) ---------------------------
+
+def test_a_charger_at_your_feet_is_not_a_stop(world):
+    """The Denver -> Salt Lake City failure: with nothing reachable ahead, the
+    planner chose a Supercharger at its own current position. That verifies
+    trivially, charges to 80%, and the loop repeats having moved zero miles.
+    It burned all seven stop slots and stalled at 360 of 520 miles, listing
+    the same Wyoming Supercharger twice in a row."""
+    far = (41.5, -118.24)  # ~515 mi north of LA, well beyond one charge
+    # One good charger partway, plus a decoy sitting right on the origin.
+    world.add_station(LA[0] + 0.001, LA[1] + 0.001, max_kw=250)
+    world.add_station(35.5, -118.24, max_kw=250)
+
+    plan = _plan(world, destination=far)
+
+    chosen = [(s["lat"], s["lon"]) for s in plan["stops"]]
+    assert len(chosen) == len(set(chosen)), f"same stop chosen twice: {chosen}"
+    for s in plan["stops"]:
+        assert haversine_mi(LA[0], LA[1], s["lat"], s["lon"]) > planner.MIN_STOP_PROGRESS_MI, \
+            "chose a charger that does not advance the route"
+
+
+def test_no_station_is_used_twice_in_one_plan(world):
+    world.stations_along(LA, SF, every_mi=40)
+    plan = _plan(world)
+    ids = [s["id"] for s in plan["stops"] if s["id"] is not None]
+    assert len(ids) == len(set(ids)), f"repeated station ids: {ids}"
+
+
+def test_hazard_avoidance_survives_a_leg_longer_than_the_ors_polygon_cap(world):
+    """ORS refuses avoid_polygons past ~150km and _safe_directions reads the
+    refusal as "no route", so the whole avoidance pass used to give up and
+    tell the driver no detour existed. A 205-mile car runs 110-125 miles
+    between stops, so that was most legs of most real trips - the headline
+    feature was quietly off outside short hops."""
+    origin = (34.0, -118.0)
+    destination = (35.7, -118.0)  # ~117 mi, comfortably over the cap
+    mid_lat = (origin[0] + destination[0]) / 2
+    world.overpass_result = {
+        "elements": [{
+            "type": "way",
+            "tags": {"highway": "primary", "name": "Big Blvd", "lanes": "7"},
+            "geometry": [{"lat": mid_lat, "lon": -118.01}, {"lat": mid_lat, "lon": -117.99}],
+        }]
+    }
+    world.stations_along(origin, destination, every_mi=40)
+
+    plan = run(planner.plan_trip(origin, destination, **CAR, safety_mode="avoid_hard"))
+
+    assert plan["feasible"]
+    note = plan["note"] or ""
+    assert "Rerouted around" in note, f"avoidance never ran on a long leg: {note!r}"
+    assert "no workable detour" not in note
+
+
+def test_joined_route_pieces_add_up(world):
+    """A split leg must report real summed numbers, not a proportional slice
+    of the original - the mistake this module's docstring warns about."""
+    a = {"distance_mi": 40.0, "duration_min": 45.0, "ascent_ft": 100.0, "descent_ft": 50.0,
+         "highway_fraction": 1.0, "geometry": [(-118.0, 34.0), (-118.0, 34.5)],
+         "elevations_m": [10.0, 20.0]}
+    b = {"distance_mi": 60.0, "duration_min": 60.0, "ascent_ft": 200.0, "descent_ft": 25.0,
+         "highway_fraction": 0.5, "geometry": [(-118.0, 34.5), (-118.0, 35.0)],
+         "elevations_m": [20.0, 30.0]}
+    j = planner._join_routes([a, b])
+    assert j["distance_mi"] == 100.0
+    assert j["duration_min"] == 105.0
+    assert j["ascent_ft"] == 300.0 and j["descent_ft"] == 75.0
+    assert abs(j["highway_fraction"] - 0.7) < 1e-9, "must be distance-weighted"
+    assert j["geometry"] == [(-118.0, 34.0), (-118.0, 34.5), (-118.0, 35.0)], "joint not deduped"
+    assert len(j["elevations_m"]) == len(j["geometry"])
+
+
+def test_a_plan_cannot_spend_unbounded_routing_calls(world, monkeypatch):
+    """ORS allows 40 directions calls a minute and the backoff for exceeding
+    it outlasts Render's ~100s proxy, so an unbounded plan spends the quota
+    AND still shows "planning took too long". The budget turns that into a
+    partial plan with a note."""
+    monkeypatch.setattr(planner, "MAX_VERIFY_CALLS_PER_PLAN", 5)
+    origin, destination = (34.0, -118.0), (40.0, -118.0)  # ~414 mi
+    # Plenty of on-route chargers that rank fine but all sit beyond what this
+    # battery can reach, so every one of them costs a verification call and
+    # none is ever accepted.
+    for i in range(60):
+        world.add_station(34.5 + i * 0.02, -118.0, max_kw=50)
+
+    plan = run(planner.plan_trip(origin, destination, full_range_mi=60.0, battery_pct=100.0))
+
+    assert len(world.directions_calls) < 40, "spent more calls than the budget allows"
+    assert not plan["feasible"]
+    assert "more charger checks than one plan is allowed" in (plan["note"] or "")
+
+
+def test_eight_stops_available_for_a_badly_degraded_battery(world):
+    """600 miles in a car down to ~150 real miles needs more than six stops.
+    Six silently truncated the plan for exactly the driver this app is for."""
+    assert planner.MAX_STOPS >= 10
+    origin, destination = (34.0, -118.0), (42.7, -118.0)  # ~600 mi
+    world.stations_along(origin, destination, every_mi=30)
+    plan = run(planner.plan_trip(origin, destination, full_range_mi=150.0, battery_pct=100.0))
+    assert plan["feasible"], plan.get("note")
+    assert len(plan["stops"]) > 6, f"only {len(plan['stops'])} stops used"
