@@ -417,11 +417,24 @@ async def lane_closure_flags(coords: list[tuple[float, float]], cum: list[float]
     at = at_epoch if at_epoch is not None else time.time()
     flags = []
     seen_ids: set = set()
+    # nearest_route_point walks the whole polyline, so running it for every
+    # active closure statewide is hundreds of full-route scans - synchronous
+    # work that blocks the event loop and that asyncio.wait_for cannot
+    # interrupt, since it happens after the last await. A box around the route
+    # throws out the ones that were never going to match.
+    pad = CLOSURE_ON_ROUTE_MI / 60.0
+    min_lon = min(p[0] for p in coords) - pad
+    max_lon = max(p[0] for p in coords) + pad
+    min_lat = min(p[1] for p in coords) - pad
+    max_lat = max(p[1] for p in coords) + pad
+
     for c in closures:
         if c["id"] in seen_ids:
             continue
         # active when you'll actually be on the road, not when you planned
         if not (c["start_epoch"] <= at <= c["end_epoch"]):
+            continue
+        if not (min_lat <= c["lat"] <= max_lat and min_lon <= c["lon"] <= max_lon):
             continue
         dist_along, offset = nearest_route_point(coords, cum, c["lat"], c["lon"])
         if offset > CLOSURE_ON_ROUTE_MI:

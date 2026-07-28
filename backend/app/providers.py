@@ -97,7 +97,11 @@ class _TTLCache:
 # answered this morning is still right this afternoon - 6h is conservative.
 # Directions results carry full geometry (+elevation), so the entry cap is
 # what bounds memory, sized for Render's free 512MB instance.
-_directions_cache = _TTLCache(ttl_s=6 * 3600, max_entries=64)
+# 160, not 64: MAX_STOPS rose to 10, so a single hard plan can make ~70
+# distinct directions calls and a 64-entry cache evicted itself partway
+# through - exactly when the skip-a-stop and corridor replans that the
+# cache exists for come along. ~300KB an entry at 600-mile route sizes.
+_directions_cache = _TTLCache(ttl_s=6 * 3600, max_entries=160)
 _geocode_cache = _TTLCache(ttl_s=24 * 3600, max_entries=256)
 # Charging stations come and go on week scales; 30min mostly serves replans
 # within one planning session (skip-stop, corridor switches) without letting

@@ -255,3 +255,29 @@ def test_turn_search_is_not_all_spent_in_the_first_city():
         t["mile"] <= crossings.HAZARD_WINDOW_MI + 1 or t["mile"] >= cum[-1] - crossings.HAZARD_WINDOW_MI - 1
         for t in windowed
     ), "turns found outside the anchor windows"
+
+
+def test_closure_bbox_filter_keeps_the_ones_that_count(world):
+    """The box around the route only exists to skip closures that were never
+    going to match - running nearest_route_point for every active closure in
+    the state is hundreds of full-polyline scans, synchronous work that
+    asyncio.wait_for cannot interrupt. It must not drop a real one, including
+    a closure just off the end of the route."""
+    coords = _straight_north_route()
+    cum = cumulative_distances_mi(coords)
+    now = time.time()
+    base = {
+        "start_epoch": now - 3600, "end_epoch": now + 3600, "lon": -118.0,
+        "route": "SR-1", "direction": "NB", "type": "Lane", "work": "",
+        "lanes_closed": "1", "total_lanes": "2", "until": "",
+    }
+    on_route = {**base, "id": "ON", "lat": coords[len(coords) // 2][1]}
+    at_the_very_end = {**base, "id": "END", "lat": coords[-1][1]}
+    statewide_noise = [
+        {**base, "id": f"N{i}", "lat": 36.0 + i * 0.01, "lon": -121.0}
+        for i in range(300)
+    ]
+    world.closures = [on_route, at_the_very_end, *statewide_noise]
+
+    flags = run(crossings.lane_closure_flags(coords, cum))
+    assert len(flags) == 2, f"bbox filter dropped a real closure: {flags}"
