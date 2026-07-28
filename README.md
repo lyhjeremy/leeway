@@ -9,10 +9,10 @@ traffic without a light.
 Leeway plans road trips across the mainland US around the battery your car
 has today,
 then spends a detour budget you set, in minutes, on hazards other planners
-route you straight through: unprotected left turns, unsignaled
-crossings of 4+ lane roads, rail level crossings, and live Caltrans
-closures. Afterwards it asks how the trip went, and keeps the record of how
-wrong it was.
+route you straight through: unprotected left turns, unsignaled crossings of
+4+ lane roads, and rail level crossings. In California it adds live Caltrans
+closures, the one piece of this no other state publishes. Afterwards it asks
+how the trip went, and keeps the record of how wrong it was.
 
 Built around a real 2021 Tesla Model 3 Standard Range Plus: 205 mi at 100%,
 down from 263 new. Full product plan: `../LEEWAY_PRODUCT_PLAN.md` (one level
