@@ -124,40 +124,6 @@ function applyNightRoadContrast(map: maplibregl.Map) {
 }
 
 
-/** Keep MapLibre's compact attribution shut until the driver opens it.
- *
- * MapLibre rebuilds the attribution control whenever a source reports its
- * attribution, and each rebuild re-adds `maplibregl-compact-show`. Removing
- * the class once after 'load' loses that race, so the full credit line comes
- * back and, at 360px, wraps to two rows across the map buttons. Watching the
- * class is the only way to hold it closed without also breaking the (i)
- * toggle, which has to keep working once it is pressed on purpose. */
-function keepAttributionCollapsed(map: maplibregl.Map): () => void {
-  const container = map.getContainer()
-  let openedByUser = false
-
-  const onPointerDown = (e: Event) => {
-    const target = e.target as HTMLElement | null
-    if (target?.closest('.maplibregl-ctrl-attrib-button')) openedByUser = true
-  }
-  container.addEventListener('pointerdown', onPointerDown, true)
-
-  const collapse = () => {
-    if (openedByUser) return
-    container
-      .querySelector('.maplibregl-ctrl-attrib')
-      ?.classList.remove('maplibregl-compact-show')
-  }
-  const observer = new MutationObserver(collapse)
-  observer.observe(container, { subtree: true, attributes: true, attributeFilter: ['class'] })
-  collapse()
-
-  return () => {
-    observer.disconnect()
-    container.removeEventListener('pointerdown', onPointerDown, true)
-  }
-}
-
 function App() {
   const [route, setRoute] = useState(window.location.hash)
   useEffect(() => {
@@ -369,14 +335,19 @@ function Planner() {
       // to two rows on a 320px screen and covered a third of the map.
       attributionControl: { compact: true },
     })
-    // MapLibre leaves the compact attribution expanded until first toggle, so
-    // it starts collapsed here and the (i) button re-opens it. Removing the
-    // class once on 'load' was not enough: MapLibre rebuilds the control every
-    // time a source reports its attribution, which happens after load, and the
-    // class came back. On a 360px phone the re-expanded line wraps to two rows
-    // and sits on top of the locate/units/theme buttons. An observer keeps it
-    // shut until the driver actually opens it.
-    const attribCleanup = keepAttributionCollapsed(map)
+    // Start the compact attribution collapsed; the (i) button re-opens it.
+    // MapLibre rebuilds the control whenever a source reports its attribution,
+    // so on a narrow map the class can come back and the credit line re-expands
+    // to two rows. Do NOT try to hold it shut with a MutationObserver: the
+    // callback changes a class, MapLibre puts it straight back, and at phone
+    // width the two spin against each other until the main thread is pegged and
+    // the page never finishes loading. That shipped once and took mobile down
+    // completely while the laptop looked fine, because a wide map never enters
+    // compact mode and never starts the fight. The chip row clears a two-row
+    // attribution in CSS instead, which costs 8px and cannot loop.
+    map.once('load', () => {
+      map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
+    })
     if (document.documentElement.dataset.theme === 'dark') applyNightRoadContrast(map)
     map.on('style.load', () => {
       styleReadyRef.current = true
@@ -393,7 +364,6 @@ function Planner() {
     return () => {
       window.clearTimeout(settle)
       window.removeEventListener('orientationchange', onOrient)
-      attribCleanup()
       map.remove()
     }
   }, [])
