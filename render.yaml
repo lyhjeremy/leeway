@@ -5,15 +5,14 @@ services:
     rootDir: backend
     dockerfilePath: Dockerfile
     plan: free
-    # healthCheckPath is deliberately unset. With it pointing at /api/health,
-    # Render's checker hit the container every 5 seconds, which kept the
-    # instance reporting healthy from the inside while its external route had
-    # gone stale: on 2026-07-29 the logs showed 200 OK to 10.233.x every 5s at
-    # the same minutes external requests were hanging with zero bytes after a
-    # completed TLS handshake. Restarting re-registered the route and it broke
-    # again after the next 15-minute spin-down. Letting the free instance idle
-    # and wake on real traffic is the thing left to try. Put this back if it
-    # makes no difference.
+    # Ruled out as the cause of the 2026-07-29 outage, so it stays. The theory
+    # was that Render's 5-second poll of this path kept the container looking
+    # healthy from the inside while its external route went stale. Removing it
+    # and letting the instance idle for 21 minutes with no traffic at all
+    # changed nothing: the wake attempt still timed out at 300s with zero bytes
+    # after a completed TLS handshake. The break is on Render's side of the
+    # edge, not something this file controls.
+    healthCheckPath: /api/health
     autoDeployTrigger: commit
     envVars:
       - key: ORS_API_KEY
