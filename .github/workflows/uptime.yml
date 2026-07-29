@@ -1,0 +1,64 @@
+# Checks the backend is alive and serving the version we think is deployed.
+#
+# This replaces an earlier "Keep backend warm" workflow that pinged every 10
+# minutes on the theory that it would hold the free Render instance open.
+# It never did. GitHub throttles scheduled workflows hard on shared runners:
+# the */10 cron actually fired once every 1-3 hours, and Render's billing page
+# showed 30 of 750 free instance-hours used in a month rather than the ~744 an
+# always-on service would burn. Every ping was hitting a cold instance.
+#
+# So this is an uptime check, not a warmer. It budgets for the cold start
+# instead of pretending there isn't one: waking the Docker image from a spun
+# down state takes well over the old 90s ceiling, which is what turned every
+# run red on 2026-07-29 and mailed the failure out four times.
+#
+# The frontend already tells users the backend may be waking up (App.tsx,
+# api.ts), so a cold start is a handled case, not an outage. A failure here
+# means the API did not answer within five minutes across three tries - worth
+# the email.
+name: Backend uptime check
+
+on:
+  schedule:
+    # Four times a day, deliberately off the hour. GitHub drops on-the-hour
+    # scheduled runs first when its shared runners are busy.
+    - cron: '17 2,8,14,20 * * *'
+  workflow_dispatch:
+
+# A queued run has nothing to add if a later one is already going.
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Wake the backend and check health
+        run: |
+          set -uo pipefail
+          URL=https://leeway-api.onrender.com/api/health
+
+          for attempt in 1 2 3; do
+            echo "::group::Attempt $attempt"
+            # 300s covers a cold start with room to spare; the first attempt
+            # is usually the one that pays for the wake-up.
+            body=$(curl -sS --max-time 300 --fail-with-body "$URL") && rc=0 || rc=$?
+            echo "curl exit: $rc"
+            echo "body: $body"
+            echo "::endgroup::"
+
+            if [ "$rc" -eq 0 ] && printf '%s' "$body" | grep -q '"status":"ok"'; then
+              version=$(printf '%s' "$body" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
+              echo "Backend healthy, version ${version:-unknown}"
+              echo "### Backend healthy — version \`${version:-unknown}\`" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            [ "$attempt" -lt 3 ] && sleep 30
+          done
+
+          echo "Backend did not return a healthy response after 3 attempts." >&2
+          echo "### Backend unreachable after 3 attempts over ~15 minutes" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
