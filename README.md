@@ -40,6 +40,13 @@ up, not in this repo — this repo is the codebase only).
 **Product overview:** https://lyhjeremy.github.io/leeway/overview/ ·
 backend health at `https://leeway-api.onrender.com/api/health`.
 
+> **First search or plan may take 30-60 seconds.** The backend runs on Render's
+> free tier, which spins the instance down after 15 idle minutes, so the first
+> request of a session pays for the wake-up. The app says so while it waits
+> rather than looking broken. A `Backend uptime check` workflow probes it four
+> times a day and only reports failure once it has genuinely not answered in
+> about fifteen minutes across three tries.
+
 ## What it does
 
 - Reroutes around point hazards, each detector its own switch: unprotected
