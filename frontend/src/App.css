@@ -1,25 +1,25 @@
 :root {
-  /* Pale eucalyptus-asphalt: cool gray-greens from the roadside, not the
-     default warm cream. Charge-state colors (green/amber/red) are reserved
-     for battery meaning and never decorate anything else. */
-  --page: #eef0ea;
+  /* Ledger house style. Charge-state colours are reserved for battery meaning
+     and never decorate anything else, which is why they keep a hue at all. */
+  --page: #EDEDE7;
   --card: #F5F5F0;
-  --ink: #191b16;
-  --ink2: #545a4e;
-  --muted: #879080;
-  --hair: #d9ddd1;
-  --go-green: #1e7a34;
-  --go-text: #1b6a2f;
-  --amber-text: #9a6b00;
-  --reserve-red: #b23b3b;
-  --sc-blue: #2a6fc9;
-  --ccs-orange: #e2622b;
-  --warn: #e5a916;
+  --ink: #1C1E1B;
+  --ink2: #3C403A;
+  --muted: #52564E;
+  --hair: #C6C7BF;
+  --go-green: #2C5852;
+  --go-text: #2C5852;
+  --amber-text: #7A5A1E;
+  --reserve-red: #8C3A1E;
+  --sc-blue: #3A5A6E;
+  --ccs-orange: #8C3A1E;
+  --warn: #7A5A1E;
   --ink-contrast: #F5F5F0; /* text sitting on an ink-colored surface */
-  --bad-text: #b23b3b;
-  --bad-border: #f0d6d6;
-  --bad-bg: #fbf3f3;
-  --mono: 'Overpass Mono', ui-monospace, 'SF Mono', monospace;
+  --bad-text: #8C3A1E;
+  --bad-border: #D8C4BC;
+  --bad-bg: #EDE1DC;
+  --serif: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
 /* The same roadside palette after dark: green-tinted near-blacks, chalky
@@ -28,11 +28,11 @@
    preference. */
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --page: #171a15;
-  --card: #21251f;
-  --ink: #f4f5ee;
-  --ink2: #ccd2c1;
-  --muted: #9ba491;
+  --page: #191B18;
+  --card: #212420;
+  --ink: #E6E6DE;
+  --ink2: #C4C7BC;
+  --muted: #A2A69B;
   --hair: #42473c;
   --go-green: #4fae63;
   --go-text: #6cc47e;
@@ -40,8 +40,8 @@
   --reserve-red: #d97b7b;
   --sc-blue: #6aa2e8;
   --ccs-orange: #ef7f4f;
-  --warn: #e5a916;
-  --ink-contrast: #171a15;
+  --warn: #7A5A1E;
+  --ink-contrast: #191B18;
   --bad-text: #e08585;
   --bad-border: #5a3535;
   --bad-bg: #2b1f1f;
@@ -303,7 +303,7 @@
 }
 
 .mic-btn.listening {
-  background: #b23b3b;
+  background: #8C3A1E;
 }
 
 .voice-chip {
@@ -1627,3 +1627,6 @@ input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+
+h1, h2, h3, h4 { font-family: var(--serif); font-weight: 600; line-height: 1.15; }
