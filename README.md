@@ -1,5 +1,7 @@
 # Leeway
 
+Design and copy follow [these standards](https://github.com/lyhjeremy/lyhjeremy/blob/main/DESIGN_STANDARDS.md).
+
 *The second opinion before you leave.*
 
 Every EV planner finds you a charger. This one will also spend a minute of
@@ -16,7 +18,7 @@ how the trip went, and keeps the record of how wrong it was.
 
 Built around a real 2021 Tesla Model 3 Standard Range Plus: 205 mi at 100%,
 down from 263 new. Full product plan: `../LEEWAY_PRODUCT_PLAN.md` (one level
-up, not in this repo — this repo is the codebase only).
+up, not in this repo. This repo is the codebase only).
 
 ### The unusual parts
 
@@ -57,7 +59,7 @@ backend health at `https://leeway-api.onrender.com/api/health`.
   strong wind.
 - Plans charging stops with elevation-aware range math (a proportional
   slice of trip-wide climb data called I-5's Grapevine "reachable" when a
-  real per-leg check proved it wasn't — every candidate stop is verified
+  real per-leg check proved it wasn't. Every candidate stop is verified
   with a real routing call before it's accepted).
 - Adjusts range for live weather (temperature, headwind), passenger and
   luggage load, and an optional manual temperature. Set a departure time
@@ -88,10 +90,10 @@ backend health at `https://leeway-api.onrender.com/api/health`.
 
 ## Structure
 
-- `frontend/` — React + Vite + TS, MapLibre GL, deployed to GitHub Pages.
-- `backend/` — FastAPI on Render (Docker runtime, free tier) — see
+- `frontend/`: React + Vite + TS, MapLibre GL, deployed to GitHub Pages.
+- `backend/`: FastAPI on Render (Docker runtime, free tier), see
   `backend/README.md` for why it's not on Hugging Face Spaces.
-- `.github/workflows/pages.yml` — builds and deploys the frontend on every
+- `.github/workflows/pages.yml`, builds and deploys the frontend on every
   push to `frontend/**`. The backend deploys via Render's own GitHub
   integration (`render.yaml` at the repo root).
 
@@ -100,7 +102,7 @@ Map (stations), Open-Meteo (weather), Overpass/OSM (POI search), the US
 Census geocoder (exact house numbers Pelias lacks), Caltrans
 LCS (lane closures, California only), Gemini (voice query parsing).
 Coverage is the mainland US. Successful provider responses are cached in-process (routes 6h,
-stations 30min, weather 15min) to stretch the free-tier quotas — the ORS
+stations 30min, weather 15min) to stretch the free-tier quotas. The ORS
 daily directions ceiling is the stack's real scarcity, documented at
 roughly 150–200 plans/day.
 
@@ -120,7 +122,7 @@ worse than a plan without warnings.
 Past 60 miles the hazard search is **windowed**. Spreading a fixed point
 budget over a whole route meant a 600-mile trip got one point every four
 miles, so Overpass was being asked about a chain of chords that cut corners
-by miles inside a 30m buffer — a near-empty result, which reads as "safe".
+by miles inside a 30m buffer. A near-empty result, which reads as "safe".
 The search now runs only within 6 miles of each leg join (origin, every
 stop, destination), which is where surface-street hazards exist at all.
 Each window gets its own `around:` clause: concatenating them would have
@@ -132,13 +134,13 @@ miles apart.
 The free tier is the ceiling and it is a real one. ORS allows 2,000
 directions calls a day and **40 a minute**. A two-stop plan uses under ten;
 a hard one in sparse country uses dozens. The minute limit bites first,
-because its backoff outlasts Render's ~100s proxy — an unbounded plan would
+because its backoff outlasts Render's ~100s proxy. An unbounded plan would
 spend the quota and still show "planning took too long". Three caps keep it
 honest:
 
-- `MAX_VERIFY_CALLS_PER_PLAN = 60` — past this the plan stops and says so,
+- `MAX_VERIFY_CALLS_PER_PLAN = 60`: past this the plan stops and says so,
   rather than stalling. This is the cost guard.
-- `MAX_STOPS = 10` — enough for 600 miles in a car down to ~150 real miles,
+- `MAX_STOPS = 10`: enough for 600 miles in a car down to ~150 real miles,
   the driver this exists for. Six silently truncated that plan.
 - `POINT_HAZARD_BUDGET_S = 15` per hazard check, after which it degrades to
   no flags.
@@ -151,7 +153,7 @@ Two more things learned by planning real trips outside California:
 
 - A chosen stop must advance the route by `MIN_STOP_PROGRESS_MI` and no
   station may be used twice. Without both, a Denver → Salt Lake City plan
-  picked a charger at its own current position, charged to 80%, and looped —
+  picked a charger at its own current position, charged to 80%, and looped,
   burning every stop slot and stalling at 360 of 520 miles. Charger density
   hid it in California.
 - ORS refuses `avoid_polygons` past 150km, and `_safe_directions` reads the
@@ -164,7 +166,7 @@ Two more things learned by planning real trips outside California:
 
 The same frontend ships as a native iOS app: a Capacitor shell (in
 `frontend/ios/`, Swift Package Manager, no CocoaPods) that adds what the
-website can't do — a local-notification reminder to log how a planned trip
+website can't do. A local-notification reminder to log how a planned trip
 went, the native share sheet for sending a stop to the Tesla app, and
 theme-matched status bar / safe areas. The built web bundle is committed,
 so building the app needs only Xcode: see `IOS_HANDOFF.md` for the
@@ -181,7 +183,7 @@ cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload -
 
 The backend test suite (97 and counting) runs fully offline against a faked
 provider layer (synthetic routes with configurable speed/elevation/highway
-mix, canned stations, weather, OSM and Caltrans data) — they cover the range
+mix, canned stations, weather, OSM and Caltrans data). They cover the range
 math,
 every safety-flag detector, the planner end to end including its honest
 failure notes, and the provider caches. The frontend's calibration math
@@ -196,12 +198,12 @@ cd frontend && npm test
 ## A real bug found during Stage 0
 
 `maplibre-gl@6.0.0` (released 2026-07-25, the same day this was built) failed
-to load any vector tiles — the base style's raster hillshade layer rendered
+to load any vector tiles. The base style's raster hillshade layer rendered
 fine, but the vector `openmaptiles` source never issued a single tile
 request, with no error surfaced anywhere (not `map.on('error')`, not a
 failed network request). Pinned to `5.9.0` and the map rendered correctly on
 the first retry. Worth re-testing a `6.x` upgrade later once it's had time to
 mature, but don't assume a `maplibre-gl` major bump is safe without visually
-checking that tiles actually render — a silent, error-free failure like this
+checking that tiles actually render. A silent, error-free failure like this
 is exactly the kind of regression automated checks (build success, no
 console errors) won't catch.

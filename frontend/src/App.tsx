@@ -459,7 +459,7 @@ function Planner() {
       // line disappeared into the road network on both themes.
       const dark = document.documentElement.dataset.theme === 'dark'
       const routeColor = dark ? '#7fb2ff' : '#155ccc'
-      const casingColor = dark ? '#0c1017' : '#ffffff'
+      const casingColor = dark ? '#0c1017' : '#F5F5F0'
       const markerColor = dark ? '#e8eadf' : '#0b0b0b'
       const geojson = {
         type: 'Feature' as const,
@@ -1038,7 +1038,7 @@ function Planner() {
                   />
                   {!isFirst && !isLast && (
                     <button className="row-remove" onClick={() => removeWaypoint(i - 1)} title="Remove this stop">
-                      ✕
+                      Close
                     </button>
                   )}
                 </div>
@@ -1469,7 +1469,7 @@ function Planner() {
               onClick={toggleTheme}
               title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             >
-              {theme === 'dark' ? '☀' : '☾'}
+              {theme === 'dark' ? 'Light' : 'Dark'}
             </button>
             {apiStatus === 'down' && (
               <span className="api-chip api-chip--down">can't reach the planner - it may be waking up</span>
@@ -1509,7 +1509,7 @@ function Planner() {
               with a straight face. Say what happened and stop there. */}
           {plan && plan.rate_limited && plan.distance_mi === 0 && (
             <div className="verdict verdict-bad">
-              <div className="status">⚠ Planning couldn't run</div>
+              <div className="status">Planning couldn't run</div>
               <div className="sub note">
                 The routing provider's usage limit is used up right now. Nothing got planned - try again in a little
                 while.
@@ -1522,14 +1522,14 @@ function Planner() {
               <div className={`verdict ${plan.feasible ? 'verdict-ok' : 'verdict-bad'}`}>
                 <div className="status">
                   {plan.feasible
-                    ? '✓ Makeable with your reserve'
+                    ? 'Makeable with your reserve'
                     : plan.rate_limited
-                      ? '⚠ Planning got interrupted partway - try again in a little while'
+                      ? 'Planning got interrupted partway - try again in a little while'
                       : plan.stops.length > 0
-                        ? "⚠ Plan incomplete - couldn't lock in the leg after your last stop"
+                        ? "Plan incomplete - couldn't lock in the leg after your last stop"
                         : plan.arrival_pct < 0
-                          ? "⚠ Won't make it as planned - charge before you leave"
-                          : '⚠ Tight - check the plan below'}
+                          ? "Won't make it as planned - charge before you leave"
+                          : 'Tight - check the plan below'}
                 </div>
                 <div className="big">
                   {plan.arrival_pct < 0 ? `About ${dist(Math.abs(plan.leeway_mi))} short` : `Arrive at ${plan.arrival_pct}%`}{' '}
@@ -1568,8 +1568,7 @@ function Planner() {
                   </div>
                 )}
                 {plan.safety_flags.slice(0, 3).map((f, i) => (
-                  <div className="sub safety-flag" key={i}>
-                    ⚠ {f.description}
+                  <div className="sub safety-flag" key={i}>{f.description}
                   </div>
                 ))}
                 {plan.safety_flags.length > 3 && (

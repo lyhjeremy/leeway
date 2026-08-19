@@ -85,7 +85,7 @@ export default function VoiceBar({ origin, destination, units, onAddStop }: Prop
             disabled={loading}
             title="Speak your request"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="#fff">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="#F5F5F0">
               <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z" />
             </svg>
           </button>
@@ -99,8 +99,7 @@ export default function VoiceBar({ origin, destination, units, onAddStop }: Prop
           <div className="voice-chip-head">
             <div className="voice-query">“{text}”</div>
             <button className="voice-close" onClick={() => setResult(null)} aria-label="Hide results">
-              ✕
-            </button>
+              </button>
           </div>
           {result.note && <div className="voice-note">{result.note}</div>}
           {result.results.length === 0 && !result.note && <div className="voice-note">No matches found near the route.</div>}

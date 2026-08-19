@@ -1,8 +1,8 @@
-# Leeway iOS — build & ship handoff
+# Leeway iOS: build & ship handoff
 
 Everything on the code side is done. This doc is for the person with the
 Apple Developer account: you need a Mac with **Xcode 15 or newer** and
-nothing else — no Node, no CocoaPods (the project uses Swift Package
+nothing else, no Node, no CocoaPods (the project uses Swift Package
 Manager, and the built web bundle is committed).
 
 ## What this app is
@@ -18,7 +18,7 @@ shell, plus three native features the website can't do:
 - **Status bar / safe areas** matching the app's light and dark themes.
 
 The app talks to the same production backend as the website
-(`https://leeway-api.onrender.com`) — its CORS already allows the app's
+(`https://leeway-api.onrender.com`). Its CORS already allows the app's
 origin. No server changes needed.
 
 ## Build steps
@@ -30,9 +30,9 @@ origin. No server changes needed.
    required for that first resolution.
 2. In the App target → Signing & Capabilities: select your team. If the
    bundle ID `io.github.lyhjeremy.leeway` can't be registered under your
-   account, change it — and mirror the change in
+   account, change it, and mirror the change in
    `frontend/capacitor.config.ts` (`appId`) so future regenerations match.
-3. Add the **Push Notifications capability? No** — not needed; the reminder
+3. Add the **Push Notifications capability? No.** Not needed; the reminder
    is a local notification, no capability or APNs key required.
 4. Run on a simulator first, then a device. Archive → Distribute →
    App Store Connect for TestFlight.
@@ -70,7 +70,7 @@ origin. No server changes needed.
 - Voice search's microphone is hidden in the app (WKWebView has no speech
   recognition); typing in the same bar works. The mic works on the website.
 - The map tiles come from OpenFreeMap's free CDN, which can briefly 503
-  under load — panels stay usable and tiles fill in.
+  under load, panels stay usable and tiles fill in.
 
 ## If the web bundle ever needs rebuilding
 

@@ -13,26 +13,26 @@ npm run sync:ios   # build + cap sync ios (see ../IOS_HANDOFF.md)
 ```
 
 `vite.config.ts` sets `base: '/leeway/'` because Pages serves the app from a
-subpath. Serving `dist/` at a web root will 404 every asset — put it under a
+subpath. Serving `dist/` at a web root will 404 every asset, put it under a
 `leeway/` directory if you need to preview a production build locally.
 
 ## Layout
 
-- `App.tsx` — the planner: route list, options tabs, map, verdict card. Most
+- `App.tsx`. The planner: route list, options tabs, map, verdict card. Most
   of the app lives here.
-- `api.ts` — the backend calls. Every one has an abort timeout, and 502/504
+- `api.ts`. The backend calls. Every one has an abort timeout, and 502/504
   are translated, because those come from Render's proxy giving up on a slow
   plan rather than from the planner itself.
-- `storage.ts` — everything device-local: car range, units, theme, recent
+- `storage.ts`, everything device-local: car range, units, theme, recent
   trips, logged trips, and the recency-weighted calibration factor. Every
   read and write is wrapped, because Chrome with cookies blocked throws on
   *any* localStorage access and an unguarded read white-screens the app
   before first paint.
 - `LocationInput.tsx`, `VoiceBar.tsx`, `CarSetup.tsx`, `TripCard.tsx`,
-  `TripFeedback.tsx`, `AccuracyPage.tsx` — one screen or control each.
-- `native.ts` — the iOS-only paths (local notification, share sheet, status
+  `TripFeedback.tsx`, `AccuracyPage.tsx`, one screen or control each.
+- `native.ts`, the iOS-only paths (local notification, share sheet, status
   bar). No-ops on the web.
-- `public/overview/` — the product overview page, plain HTML, deployed
+- `public/overview/`. The product overview page, plain HTML, deployed
   alongside the app at `/leeway/overview/`.
 
 ## Things that will bite you
@@ -50,7 +50,7 @@ Use a sized iframe.
 
 **`maplibre-gl` is held at `^5.9.0`,** which takes 5.x updates and stops
 short of 6. That range is deliberate: 6.0.0 loaded no vector tiles at all and
-surfaced no error anywhere — not `map.on('error')`, not a failed request. Do
+surfaced no error anywhere, not `map.on('error')`, not a failed request. Do
 not widen it without visually confirming tiles still render, because nothing
 automated catches this. The build passes and the console stays clean.
 

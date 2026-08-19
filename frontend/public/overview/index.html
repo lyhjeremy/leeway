@@ -3,21 +3,24 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Leeway — the EV planner that detours around the left turn</title>
+<title>Leeway: the EV planner that detours around the left turn</title>
 <meta name="description" content="Every EV planner finds you a charger. Leeway also reroutes around unprotected left turns, unsignaled four-lane crossings and rail crossings, on a detour budget you set in minutes." />
 <meta name="theme-color" content="#eef0ea" />
-<meta property="og:title" content="Leeway — the second opinion before you leave" />
+<meta property="og:title" content="Leeway. The second opinion before you leave" />
 <meta property="og:description" content="Every EV planner finds you a charger. This one takes a detour to dodge a left turn. An EV road trip planner for the battery your car actually has today." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://lyhjeremy.github.io/leeway/overview/" />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Overpass+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
 <style>
+@font-face{font-family:"Source Serif 4";src:url("../../../fonts/SourceSerif4-400.woff2")format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Source Serif 4";src:url("../../../fonts/SourceSerif4-600.woff2")format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"IBM Plex Sans";src:url("../../../fonts/IBMPlexSans-400.woff2")format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"IBM Plex Sans";src:url("../../../fonts/IBMPlexSans-600.woff2")format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"IBM Plex Mono";src:url("../../../fonts/IBMPlexMono-400.woff2")format("woff2");font-weight:400;font-display:swap}
+
   :root {
     --page: #eef0ea;
-    --card: #ffffff;
+    --card: #F5F5F0;
     --ink: #191b16;
     --ink2: #4e544a;
     --muted: #7f8878;
@@ -51,7 +54,7 @@
      layout space, and without it they also fix the rendered height. */
   img { max-width: 100%; height: auto; display: block; }
   a { color: inherit; }
-  :focus-visible { outline: 2px solid var(--go); outline-offset: 3px; border-radius: 2px; }
+  :focus-visible { outline: 2px solid var(--go); outline-offset: 3px; border-radius: 0; }
   strong { font-weight: 700; color: var(--ink); }
 
   .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
@@ -70,7 +73,7 @@
     font-weight: 800; font-size: 26px; letter-spacing: -.02em;
     display: flex; align-items: center; gap: 9px;
   }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--go); flex: none; }
+  .dot { width: 9px; height: 9px; border-radius: 0; background: var(--go); flex: none; }
   .tagline { font-size: 15px; color: var(--ink2); }
 
   /* ---------- hero: the thing no other planner does ---------- */
@@ -87,7 +90,7 @@
     margin: 26px 0 0; font-size: 19.5px; color: var(--ink2); max-width: 62ch;
   }
   .hero-proof { margin: 38px 0 0; }
-  .hero-proof .shot { border-radius: 12px; }
+  .hero-proof .shot { border-radius: 0; }
 
   /* the four claims, stated as capabilities rather than superlatives */
   .claims {
@@ -115,11 +118,11 @@
   .gauge { margin: 26px 0 0; max-width: 640px; }
   .stop p.after-gauge { margin-top: 30px; }
   .gauge-track {
-    position: relative; height: 24px; border-radius: 4px;
+    position: relative; height: 24px; border-radius: 0;
     background: var(--hair); overflow: hidden;
   }
   .gauge-fill {
-    position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 4px;
+    position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 0;
     background: var(--go); animation: fill 1.7s cubic-bezier(.22,.8,.28,1) .3s forwards;
   }
   /* Reserve sits above the fill so the floor stays legible even when the
@@ -127,6 +130,7 @@
   .gauge-reserve {
     position: absolute; inset: 0 auto 0 0; width: 15%;
     border-right: 1px solid color-mix(in srgb, var(--reserve) 65%, transparent);
+    /* ledger-allow: gradient (hatch encodes the reserve zone, not decoration) */
     background: repeating-linear-gradient(-45deg,
       color-mix(in srgb, var(--reserve) 55%, transparent) 0 4px,
       transparent 4px 9px);
@@ -141,9 +145,9 @@
 
   .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
   .btn {
-    display: inline-block; padding: 14px 27px; border-radius: 8px;
+    display: inline-block; padding: 14px 27px; border-radius: 0;
     font-weight: 700; font-size: 16px; text-decoration: none;
-    border: 1px solid var(--ink); transition: transform .15s ease;
+    border: 1px solid var(--ink);
   }
   .btn:hover { transform: translateY(-1px); }
   .btn-primary { background: var(--ink); color: var(--page); }
@@ -163,7 +167,7 @@
   .stop { position: relative; padding: 0 0 84px var(--spine); }
   .stop::before {
     content: ""; position: absolute; left: calc(var(--spine) / 2 - 7px); top: 7px;
-    width: 16px; height: 16px; border-radius: 50%;
+    width: 16px; height: 16px; border-radius: 0;
     background: var(--page); border: 2px solid var(--ink); box-sizing: border-box;
   }
   .stop--charge::before { background: var(--sc-blue); border-color: var(--sc-blue); }
@@ -178,7 +182,7 @@
 
   figure { margin: 26px 0 0; }
   .shot {
-    border-radius: 10px; border: 1px solid var(--hair); box-shadow: var(--shadow);
+    border-radius: 0; border: 1px solid var(--hair);
     overflow: hidden; background: var(--card);
   }
   figcaption {
@@ -190,7 +194,7 @@
     gap: 22px; margin-top: 30px;
   }
   .panels figure { margin: 0; }
-  .panels .shot { border-radius: 8px; }
+  .panels .shot { border-radius: 0; }
   /* Screenshots run one per row. Paired side by side, a wide map shot loses
      half its width and its labels stop being readable. A tall panel shot is
      the opposite problem: at full width it runs past a screen, so it gets a
@@ -200,7 +204,7 @@
   .voice {
     margin: 30px 0 0; padding: 21px 25px; border-left: 3px solid var(--go);
     background: color-mix(in srgb, var(--go) 6%, transparent);
-    border-radius: 0 8px 8px 0;
+    border-radius: 0;
   }
   .voice p { margin: 0 0 10px; color: var(--ink); font-size: 17px; max-width: none; }
   .voice p:last-of-type { margin: 0; }
@@ -212,7 +216,7 @@
   .grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 2px; margin-top: 30px; background: var(--hair);
-    border: 1px solid var(--hair); border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--hair); border-radius: 0; overflow: hidden;
   }
   .cell { background: var(--page); padding: 23px 21px; }
   .cell h3 { font-size: 16px; font-weight: 700; margin: 0 0 8px; letter-spacing: -.01em; }
@@ -248,7 +252,7 @@
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
     .gauge-fill { animation: none; width: 62%; }
-    .btn { transition: none; }
+    .btn { }
   }
 </style>
 </head>
@@ -462,17 +466,17 @@
       <figure>
         <img class="shot" src="tab-charging.jpg" width="1000" height="2044" loading="lazy"
           alt="The Charging tab with charger network chips, charge-to percentage, reserve floor, arrive-with-at-least, and minimum charger speed." />
-        <figcaption><strong>Charging</strong> — networks, charge-to %, reserve floor, arrival minimum, slowest charger you'll accept.</figcaption>
+        <figcaption><strong>Charging</strong>: networks, charge-to %, reserve floor, arrival minimum, slowest charger you'll accept.</figcaption>
       </figure>
       <figure>
         <img class="shot" src="tab-route.jpg" width="1000" height="1077" loading="lazy"
           alt="The Route tab with stops along the way and toggles for toll roads, highways and ferries." />
-        <figcaption><strong>Route</strong> — stops along the way, tolls, highways, ferries.</figcaption>
+        <figcaption><strong>Route</strong>: stops along the way, tolls, highways, ferries.</figcaption>
       </figure>
       <figure>
         <img class="shot" src="tab-trip.jpg" width="1000" height="1527" loading="lazy"
           alt="The Trip tab with passengers, suitcases, departure time, a break-at-least-every slider and a manual temperature toggle." />
-        <figcaption><strong>Trip</strong> — passengers, luggage, departure time, break rhythm, manual temperature.</figcaption>
+        <figcaption><strong>Trip</strong>: passengers, luggage, departure time, break rhythm, manual temperature.</figcaption>
       </figure>
     </div>
     <div class="voice">
@@ -694,7 +698,7 @@
 
   <footer>
     <p>
-      Leeway — the second opinion before you leave ·
+      Leeway. The second opinion before you leave ·
       <a href="../">App</a> ·
       <a href="https://github.com/lyhjeremy/leeway">Source</a> ·
       <a href="../privacy.html">Privacy</a>
