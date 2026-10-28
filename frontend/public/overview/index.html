@@ -4,320 +4,183 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Leeway: the EV planner that detours around the left turn</title>
-<meta name="description" content="Every EV planner finds you a charger. Leeway also reroutes around unprotected left turns, unsignaled four-lane crossings and rail crossings, on a detour budget you set in minutes." />
-<meta name="theme-color" content="#eef0ea" />
-<meta property="og:title" content="Leeway. The second opinion before you leave" />
-<meta property="og:description" content="Every EV planner finds you a charger. This one takes a detour to dodge a left turn. An EV road trip planner for the battery your car actually has today." />
+<meta name="description" content="An EV road-trip planner for the mainland US that starts from the range your car has today, says how much battery you will arrive with, and spends a detour budget you set on avoiding unprotected left turns, unsignaled four-lane crossings and rail crossings." />
+<meta name="theme-color" content="#E9EAE6" />
+<meta property="og:title" content="Leeway: the second opinion before you leave" />
+<meta property="og:description" content="Every EV planner finds you a charger. This one also takes a detour to dodge a left turn, and plans from the battery your car has now." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://lyhjeremy.github.io/leeway/overview/" />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <style>
-@font-face{font-family:"Source Serif 4";src:url("../../../fonts/SourceSerif4-400.woff2")format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"Source Serif 4";src:url("../../../fonts/SourceSerif4-600.woff2")format("woff2");font-weight:600;font-display:swap}
-@font-face{font-family:"IBM Plex Sans";src:url("../../../fonts/IBMPlexSans-400.woff2")format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"IBM Plex Sans";src:url("../../../fonts/IBMPlexSans-600.woff2")format("woff2");font-weight:600;font-display:swap}
-@font-face{font-family:"IBM Plex Mono";src:url("../../../fonts/IBMPlexMono-400.woff2")format("woff2");font-weight:400;font-display:swap}
+  /* Ledger, workshop family. Self-hosted fonts; this page makes no third-party request. */
+  @font-face{font-family:"IBM Plex Sans Condensed";src:url("../fonts/IBMPlexSansCondensed-600.woff2")format("woff2");font-weight:600;font-display:swap}
+  @font-face{font-family:"IBM Plex Sans";src:url("../fonts/IBMPlexSans-400.woff2")format("woff2");font-weight:400;font-display:swap}
+  @font-face{font-family:"IBM Plex Sans";src:url("../fonts/IBMPlexSans-600.woff2")format("woff2");font-weight:600;font-display:swap}
+  @font-face{font-family:"IBM Plex Mono";src:url("../fonts/IBMPlexMono-400.woff2")format("woff2");font-weight:400;font-display:swap}
+  @font-face{font-family:"IBM Plex Mono";src:url("../fonts/IBMPlexMono-600.woff2")format("woff2");font-weight:600;font-display:swap}
 
   :root {
-    --page: #eef0ea;
-    --card: #F5F5F0;
-    --ink: #191b16;
-    --ink2: #4e544a;
-    --muted: #7f8878;
-    --hair: #d9ddd1;
-    --go: #1e7a34;
-    --go-text: #1b6a2f;
-    --amber: #9a6b00;
-    --reserve: #b23b3b;
-    --sc-blue: #2a6fc9;
-    --mono: 'Overpass Mono', ui-monospace, 'SF Mono', monospace;
-    --sans: 'Montserrat', -apple-system, system-ui, sans-serif;
-    --shadow: 0 1px 2px rgba(25,27,22,.05), 0 8px 30px rgba(25,27,22,.07);
-    --spine: 92px;
+    --paper: #E9EAE6; --panel: #F2F3EF; --ink: #191B1A; --ink-2: #4B504D;
+    --rule: #C3C6C1; --edge: #727773;
+    --signal: #2F6243;   /* green: go, charge, your car's real range */
+    --signal-2: #7C5A26; /* amber: hazards, the reserve floor, the factory figure */
+    --display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+    --body: "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+    --spine: 84px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --page: #171a15; --card: #21251f; --ink: #f4f5ee; --ink2: #ccd2c1;
-      --muted: #9ba491; --hair: #42473c; --go: #4fae63; --go-text: #6cc47e;
-      --amber: #d9a83f; --reserve: #d97b7b; --sc-blue: #6aa2e8;
-      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 30px rgba(0,0,0,.35);
+      --paper: #161817; --panel: #1F2220; --ink: #E3E5E1; --ink-2: #A0A6A1;
+      --rule: #373B38; --edge: #686E6A; --signal: #7DC096; --signal-2: #CBA668;
     }
   }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    margin: 0; background: var(--page); color: var(--ink);
-    font-family: var(--sans); font-size: 18.5px; line-height: 1.62;
-    -webkit-font-smoothing: antialiased; overflow-x: hidden;
-  }
-  /* height:auto is load-bearing: the width/height attributes below reserve
-     layout space, and without it they also fix the rendered height. */
+  *, *::before, *::after { box-sizing: border-box; border-radius: 0; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 400 17.5px/1.62 var(--body); -webkit-font-smoothing: antialiased; }
   img { max-width: 100%; height: auto; display: block; }
-  a { color: inherit; }
-  :focus-visible { outline: 2px solid var(--go); outline-offset: 3px; border-radius: 0; }
-  strong { font-weight: 700; color: var(--ink); }
+  a { color: var(--signal); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  a:hover { color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+  strong { font-weight: 600; color: var(--ink); }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .masthead { margin-top: 24px; border: 1px solid var(--edge); padding: 10px 14px; display: flex; justify-content: space-between; align-items: baseline; gap: 6px 16px; flex-wrap: wrap; }
+  .logo { font: 600 19px/1.2 var(--display); }
+  .tagline { font: 400 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--ink-2); }
 
-  .eyebrow {
-    font-family: var(--mono); font-weight: 700; font-size: 12px;
-    letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
-    margin: 0 0 14px;
-  }
-
-  .masthead {
-    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
-    padding: 30px 0 0;
-  }
-  .logo {
-    font-weight: 800; font-size: 26px; letter-spacing: -.02em;
-    display: flex; align-items: center; gap: 9px;
-  }
-  .dot { width: 9px; height: 9px; border-radius: 0; background: var(--go); flex: none; }
-  .tagline { font-size: 15px; color: var(--ink2); }
-
-  /* ---------- hero: the thing no other planner does ---------- */
-  .hero { padding: 46px 0 58px; }
-  .kicker {
-    font-size: clamp(19px, 2.2vw, 24px); font-weight: 600; color: var(--muted);
-    margin: 0 0 6px; letter-spacing: -.01em;
-  }
-  .hero h1 {
-    font-size: clamp(38px, 6.1vw, 76px); font-weight: 800; letter-spacing: -.038em;
-    line-height: 1.03; margin: 0; max-width: 16ch; color: var(--ink);
-  }
-  .hero-sub {
-    margin: 26px 0 0; font-size: 19.5px; color: var(--ink2); max-width: 62ch;
-  }
-  .hero-proof { margin: 38px 0 0; }
-  .hero-proof .shot { border-radius: 0; }
-
-  /* the four claims, stated as capabilities rather than superlatives */
-  .claims {
-    display: grid; grid-template-columns: 1fr; gap: 0 56px; margin: 52px 0 0;
-  }
-  @media (min-width: 760px) { .claims { grid-template-columns: 1fr 1fr; } }
-  .claim { padding: 18px 0 22px; border-top: 1px solid var(--hair); }
-  .claim:first-child, .claim:nth-child(2) { border-top: 2px solid var(--ink); }
-  @media (max-width: 759px) { .claim:nth-child(2) { border-top: 1px solid var(--hair); } }
-  .claim h3 {
-    font-size: 18px; font-weight: 700; margin: 0 0 7px; color: var(--ink);
-    letter-spacing: -.014em; line-height: 1.25;
-  }
-  .claim p { margin: 0; font-size: 16px; color: var(--ink2); line-height: 1.55; }
-
-  .bignum {
-    font-weight: 800; font-size: clamp(88px, 11vw, 138px); line-height: .82;
-    letter-spacing: -.05em; margin: 4px 0 0; color: var(--go-text);
-    font-variant-numeric: tabular-nums;
-  }
-  .verdict-lead {
-    font-size: clamp(22px, 2.6vw, 30px); font-weight: 600; color: var(--ink);
-    letter-spacing: -.02em; margin: 0; line-height: 1.1;
-  }
-  .gauge { margin: 26px 0 0; max-width: 640px; }
-  .stop p.after-gauge { margin-top: 30px; }
-  .gauge-track {
-    position: relative; height: 24px; border-radius: 0;
-    background: var(--hair); overflow: hidden;
-  }
-  .gauge-fill {
-    position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 0;
-    background: var(--go); animation: fill 1.7s cubic-bezier(.22,.8,.28,1) .3s forwards;
-  }
-  /* Reserve sits above the fill so the floor stays legible even when the
-     plan clears it, which is the point of showing it at all. */
-  .gauge-reserve {
-    position: absolute; inset: 0 auto 0 0; width: 15%;
-    border-right: 1px solid color-mix(in srgb, var(--reserve) 65%, transparent);
-    /* ledger-allow: gradient (hatch encodes the reserve zone, not decoration) */
-    background: repeating-linear-gradient(-45deg,
-      color-mix(in srgb, var(--reserve) 55%, transparent) 0 4px,
-      transparent 4px 9px);
-  }
-  @keyframes fill { to { width: 62%; } }
-  .gauge-scale {
-    display: flex; justify-content: space-between; margin-top: 10px;
-    font-family: var(--mono); font-size: 12px; color: var(--muted);
-    letter-spacing: .06em;
-  }
-  .gauge-scale b { color: var(--reserve); font-weight: 600; }
-
-  .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
-  .btn {
-    display: inline-block; padding: 14px 27px; border-radius: 0;
-    font-weight: 700; font-size: 16px; text-decoration: none;
-    border: 1px solid var(--ink);
-  }
-  .btn:hover { transform: translateY(-1px); }
-  .btn-primary { background: var(--ink); color: var(--page); }
-  .textlink {
-    font-size: 16px; font-weight: 600; color: var(--ink2);
-    text-decoration: underline; text-underline-offset: 4px;
-    text-decoration-thickness: 1px; align-self: center;
-  }
-  .textlink:hover { color: var(--ink); }
-
-  /* ---------- the spine: the page runs like a route ---------- */
-  .route { position: relative; padding-bottom: 40px; }
-  .route::before {
-    content: ""; position: absolute; left: calc(var(--spine) / 2); top: 8px; bottom: 90px;
-    width: 2px; background: var(--hair);
-  }
-  .stop { position: relative; padding: 0 0 84px var(--spine); }
-  .stop::before {
-    content: ""; position: absolute; left: calc(var(--spine) / 2 - 7px); top: 7px;
-    width: 16px; height: 16px; border-radius: 0;
-    background: var(--page); border: 2px solid var(--ink); box-sizing: border-box;
-  }
-  .stop--charge::before { background: var(--sc-blue); border-color: var(--sc-blue); }
-  .stop--flag::before { background: var(--amber); border-color: var(--amber); }
-  .stop--end::before { background: var(--ink); }
-  .stop > .eyebrow { margin-top: 2px; }
-  h2 {
-    font-size: clamp(28px, 3.8vw, 39px); font-weight: 800; letter-spacing: -.028em;
-    line-height: 1.12; margin: 14px 0 17px; max-width: 18ch;
-  }
-  .stop p { margin: 0 0 17px; max-width: 60ch; color: var(--ink2); }
+  .hero { padding: 52px 0 10px; }
+  .kicker { font: 600 13px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--signal); margin: 0 0 14px; }
+  h1 { font: 600 clamp(40px, 6.4vw, 76px)/1 var(--display); letter-spacing: -.02em; margin: 0; max-width: 17ch; }
+  .lede { font-size: 19.5px; color: var(--ink-2); margin: 24px 0 0; max-width: 60ch; }
+  .lede strong { color: var(--ink); }
+  .cta { display: flex; gap: 10px 22px; flex-wrap: wrap; align-items: center; margin-top: 28px; }
+  .btn { display: inline-block; padding: 12px 22px; font: 600 16px/1.2 var(--body); text-decoration: none; background: var(--signal); color: var(--paper); border: 1px solid var(--signal); }
+  .btn:hover { background: var(--ink); border-color: var(--ink); color: var(--paper); }
 
   figure { margin: 26px 0 0; }
-  .shot {
-    border-radius: 0; border: 1px solid var(--hair);
-    overflow: hidden; background: var(--card);
-  }
-  figcaption {
-    margin-top: 11px; font-family: var(--mono); font-size: 12.5px;
-    color: var(--muted); letter-spacing: .03em; line-height: 1.5;
-  }
-  .panels {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-    gap: 22px; margin-top: 30px;
-  }
+  figure img { border: 1px solid var(--rule); background: var(--panel); }
+  figcaption { margin-top: 9px; font: 400 13px/1.5 var(--mono); color: var(--ink-2); max-width: 80ch; }
+
+  .claims { margin-top: 34px; border: 1px solid var(--edge); display: grid; }
+  @media (min-width: 760px) { .claims { grid-template-columns: 1fr 1fr; } .claim:nth-child(odd) { border-right: 1px solid var(--rule); } }
+  .claim { padding: 16px 18px; border-bottom: 1px solid var(--rule); }
+  .claim .n { font: 600 28px/1.1 var(--mono); letter-spacing: -.02em; margin: 0 0 6px; color: var(--ink); }
+  .claim p { margin: 0; font-size: 15.5px; color: var(--ink-2); }
+
+  /* the route spine: each section is a stop */
+  .route { position: relative; padding: 40px 0 10px; counter-reset: stop; }
+  .route::before { content: ""; position: absolute; left: calc(var(--spine) / 2); top: 50px; bottom: 40px; border-left: 2px dashed var(--edge); }
+  .stop { position: relative; padding: 46px 0 30px var(--spine); counter-increment: stop; }
+  .stop::before { content: counter(stop, decimal-leading-zero); position: absolute; left: calc(var(--spine) / 2 - 19px); top: 50px; width: 38px; padding: 5px 0; text-align: center; background: var(--paper); border: 1px solid var(--edge); font: 600 13px/1 var(--mono); color: var(--ink); }
+  .stop--charge::before { background: var(--signal); border-color: var(--signal); color: var(--paper); }
+  .stop--flag::before { border: 2px solid var(--signal-2); color: var(--signal-2); }
+  .eyebrow { font: 600 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--ink-2); margin: 4px 0 8px; }
+  h2 { font: 600 clamp(28px, 3.6vw, 40px)/1.08 var(--display); letter-spacing: -.015em; margin: 0 0 18px; max-width: 22ch; }
+  .stop p { margin: 0 0 16px; max-width: 64ch; color: var(--ink-2); }
+  .stop p strong { color: var(--ink); }
+
+  .verdict { border: 1px solid var(--edge); background: var(--panel); padding: 16px 18px; margin: 22px 0 24px; max-width: 680px; }
+  .verdict .lead { font: 600 18px/1.2 var(--display); margin: 0; color: var(--ink); max-width: none; }
+  .stop .bignum { font: 600 clamp(64px, 9vw, 104px)/.95 var(--mono); letter-spacing: -.05em; color: var(--signal); margin: 6px 0 12px; }
+  .gauge { position: relative; height: 22px; border: 1px solid var(--edge); background: var(--paper); }
+  .gauge .fill { position: absolute; inset: 0 auto 0 0; width: 62%; background: var(--signal); }
+  .gauge .floor { position: absolute; inset: 0 auto 0 0; width: 15%; border-right: 2px solid var(--signal-2);
+    /* ledger-allow: gradient (hatch encodes the reserve zone, not decoration) */
+    background: repeating-linear-gradient(-45deg, var(--signal-2) 0 2px, transparent 2px 7px); opacity: .9; }
+  .gauge-scale { display: flex; justify-content: space-between; margin-top: 7px; font: 400 12px/1.4 var(--mono); color: var(--ink-2); }
+  .gauge-scale b { color: var(--signal-2); font-weight: 600; }
+
+  .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 20px; margin-top: 26px; align-items: start; }
   .panels figure { margin: 0; }
-  .panels .shot { border-radius: 0; }
-  /* Screenshots run one per row. Paired side by side, a wide map shot loses
-     half its width and its labels stop being readable. A tall panel shot is
-     the opposite problem: at full width it runs past a screen, so it gets a
-     ceiling of its own. */
-  .shot--narrow { max-width: 430px; }
+  .narrow { max-width: min(400px, 100%); }
 
-  .voice {
-    margin: 30px 0 0; padding: 21px 25px; border-left: 3px solid var(--go);
-    background: color-mix(in srgb, var(--go) 6%, transparent);
-    border-radius: 0;
-  }
-  .voice p { margin: 0 0 10px; color: var(--ink); font-size: 17px; max-width: none; }
-  .voice p:last-of-type { margin: 0; }
-  .voice .who {
-    font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em;
-    text-transform: uppercase; color: var(--muted); display: block; margin-top: 8px;
-  }
+  .said { margin: 24px 0 0; border: 1px solid var(--edge); padding: 14px 18px; max-width: 64ch; }
+  .said p { margin: 0 0 8px; color: var(--ink); font-size: 16.5px; }
+  .said cite { font: 400 12px/1.4 var(--mono); font-style: normal; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
 
-  .grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 2px; margin-top: 30px; background: var(--hair);
-    border: 1px solid var(--hair); border-radius: 0; overflow: hidden;
-  }
-  .cell { background: var(--page); padding: 23px 21px; }
-  .cell h3 { font-size: 16px; font-weight: 700; margin: 0 0 8px; letter-spacing: -.01em; }
-  .cell p { font-size: 15.5px; margin: 0; color: var(--ink2); max-width: none; line-height: 1.55; }
+  /* range calculator */
+  .calc { border: 1px solid var(--edge); background: var(--panel); margin-top: 24px; }
+  .calc-head { padding: 12px 16px 4px; }
+  .stop .calc-title { font: 600 20px/1.25 var(--display); margin: 0 0 4px; color: var(--ink); max-width: none !important; }
+  .calc-sub { font-size: 14.5px; color: var(--ink-2); margin: 0 !important; }
+  .calc-grid { display: grid; border-top: 1px solid var(--rule); margin-top: 12px; }
+  @media (min-width: 860px) { .calc-grid { grid-template-columns: minmax(0, 300px) minmax(0, 1fr); } .ctl { border-right: 1px solid var(--rule); } }
+  .ctl { padding: 12px 16px 14px; display: grid; gap: 10px; align-content: start; }
+  .ctl label { display: grid; gap: 2px; font: 400 13px/1.35 var(--mono); color: var(--ink-2); }
+  .ctl label b { color: var(--ink); font-weight: 600; }
+  .ctl input[type=range] { width: 100%; accent-color: var(--signal); margin: 2px 0 0; }
+  .out { padding: 12px 16px 6px; }
+  .out-row { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline; }
+  .out-n { font: 600 44px/1 var(--mono); letter-spacing: -.03em; color: var(--signal); }
+  .out-n.f { color: var(--signal-2); font-size: 30px; }
+  .out-l { font: 400 12.5px/1.4 var(--mono); color: var(--ink-2); display: block; margin-top: 4px; }
+  .calc svg { width: 100%; height: auto; display: block; margin-top: 10px; touch-action: pan-y; }
+  .tick { font: 400 11px var(--mono); fill: var(--ink-2); }
+  .grid { stroke: var(--rule); stroke-width: 1; }
+  .l-you { fill: none; stroke: var(--signal); stroke-width: 2.4; }
+  .l-fac { fill: none; stroke: var(--signal-2); stroke-width: 2; stroke-dasharray: 6 4; }
+  .lab-you { font: 600 12px var(--mono); fill: var(--signal); }
+  .lab-fac { font: 600 12px var(--mono); fill: var(--signal-2); }
+  .cur { stroke: var(--ink); stroke-dasharray: 3 3; }
+  .readout { font: 400 13.5px/1.5 var(--mono); color: var(--ink); padding: 6px 0 10px; min-height: 3em; }
+  .calc-foot { border-top: 1px solid var(--rule); padding: 9px 16px; font-size: 14px; color: var(--ink-2); }
 
-  .specs { margin-top: 28px; border-top: 1px solid var(--hair); }
-  .spec {
-    display: grid; grid-template-columns: 1fr; gap: 2px;
-    padding: 15px 0; border-bottom: 1px solid var(--hair);
-  }
-  @media (min-width: 700px) { .spec { grid-template-columns: 190px 1fr; gap: 24px; } }
-  .spec dt {
-    font-family: var(--mono); font-size: 12px; letter-spacing: .1em;
-    text-transform: uppercase; color: var(--muted); padding-top: 3px;
-  }
-  .spec dd { margin: 0; font-size: 16.5px; color: var(--ink2); }
+  .specs { margin: 22px 0 0; border-top: 1px solid var(--edge); }
+  .specs div { display: grid; gap: 2px 24px; padding: 11px 0; border-bottom: 1px solid var(--rule); }
+  @media (min-width: 760px) { .specs div { grid-template-columns: 11rem 1fr; } }
+  .specs dt { font: 600 12px/1.6 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+  .specs dd { margin: 0; font-size: 16px; color: var(--ink-2); }
+  .specs dd strong { color: var(--ink); }
 
-  .close { padding: 10px 0 90px var(--spine); position: relative; }
-  .close h2 { max-width: 20ch; }
-  footer {
-    border-top: 1px solid var(--hair); padding: 30px 0 60px;
-    font-size: 15px; color: var(--muted);
-  }
-  footer a { color: var(--ink2); }
-  footer p { margin: 0 0 8px; }
+  .close { padding: 60px 0 30px; border-top: 1px solid var(--rule); }
+  footer { border-top: 1px solid var(--rule); padding: 22px 0 60px; font-size: 14.5px; color: var(--ink-2); }
+  footer p { margin: 0 0 6px; }
+  footer a { color: var(--ink-2); }
 
   @media (max-width: 640px) {
-    :root { --spine: 40px; }
-    body { font-size: 17px; }
-    .hero { padding: 40px 0 54px; }
-    .stop { padding-bottom: 64px; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    html { scroll-behavior: auto; }
-    .gauge-fill { animation: none; width: 62%; }
-    .btn { }
+    :root { --spine: 46px; }
+    body { font-size: 16.5px; }
+    .lede { font-size: 18px; }
+    .stop::before { width: 30px; left: calc(var(--spine) / 2 - 15px); font-size: 12px; }
   }
 </style>
 </head>
 <body>
-
 <div class="wrap">
   <header class="masthead">
-    <div class="logo"><span class="dot" aria-hidden="true"></span>Leeway</div>
-    <div class="tagline">the second opinion before you leave</div>
+    <span class="logo">Leeway</span>
+    <span class="tagline">EV trip planner · mainland US · product overview</span>
   </header>
 
   <section class="hero">
-    <p class="kicker">Every EV planner finds you a charger.</p>
-    <h1>This one takes a detour to dodge a left turn.</h1>
-
-    <p class="hero-sub">
-      Leeway plans road trips across the mainland US around the battery your
-      car has today. Then it spends a budget you set, in minutes, on the hazards
-      other planners route you straight through: the
-      <strong>unsignaled crossing of a four-lane road</strong>, the
-      <strong>left turn with no light</strong>, the
-      <strong>rail crossing</strong>. In California it adds live Caltrans
-      closures, which is the one piece of this no other state publishes.
+    <p class="kicker">Every EV planner finds you a charger</p>
+    <h1>This one also takes a detour to dodge a left turn</h1>
+    <p class="lede">
+      Leeway plans road trips from the range your car shows at 100% <strong>today</strong>,
+      not the factory figure, and tells you what will be left in the battery when you
+      arrive. Then it spends a detour budget you set, in minutes, on avoiding the
+      <strong>left turn with no signal</strong>, the <strong>unsignaled crossing of a
+      four-lane road</strong> and the <strong>rail crossing</strong>. In California it
+      also routes around live Caltrans lane closures.
     </p>
-
-    <div class="cta-row">
-      <a class="btn btn-primary" href="../">Plan a trip</a>
-      <a class="textlink" href="https://github.com/lyhjeremy/leeway">or read the code</a>
+    <div class="cta">
+      <a class="btn" href="../">Plan a trip</a>
+      <a href="#range">Or work out your range here</a>
+      <a href="https://github.com/lyhjeremy/leeway">Read the code</a>
     </div>
 
-    <figure class="hero-proof">
-      <img class="shot" src="safety-detour.jpg" width="1600" height="870"
+    <figure>
+      <img src="safety-detour.jpg" width="1600" height="869" fetchpriority="high"
         alt="A two-minute neighborhood route drawn as a rectangle around a block, avoiding a crossing of West Olympic Boulevard, with the verdict card reading rerouted around 1 flagged spot for about +1 min." />
-      <figcaption>
-        A two-minute drive across the neighborhood. Leeway spent an extra minute
-        of it going around the block to avoid crossing West Olympic Boulevard
-        with no signal, and said so.
-      </figcaption>
+      <figcaption>A two-minute drive. Leeway spent one extra minute going around the block rather than crossing West Olympic Boulevard with no signal, and said so on the card.</figcaption>
     </figure>
 
     <div class="claims">
-      <div class="claim">
-        <h3>It reroutes around dangerous crossings</h3>
-        <p>Three hazard types anywhere in the country, a fourth in California,
-        each its own switch, with a detour budget in minutes. At +5 it avoids
-        anything it can dodge for five minutes or less and warns you about the
-        rest.</p>
-      </div>
-      <div class="claim">
-        <h3>Built for a five-year-old battery</h3>
-        <p>You give it the range your car shows at 100%. The Model 3 this was built
-        around left the factory rated at 263 miles and now does 205. Plan from
-        263 and the second leg comes up short.</p>
-      </div>
-      <div class="claim">
-        <h3>Every prediction gets marked</h3>
-        <p>Tell it what the battery read when you arrived. It keeps a running record
-        of predicted against actual, and tunes later plans toward your car.</p>
-      </div>
-      <div class="claim">
-        <h3>Requests in plain English</h3>
-        <p>"Add an In-N-Out after an hour of driving." Each result is priced by
-        routing to the door and back out again, then subtracting the drive you
-        were making anyway.</p>
-      </div>
+      <div class="claim"><p class="n">263 → 205 mi</p><p>The 2021 Model 3 it was built around, new and five years on. Plan from 263 and the second leg comes up short.</p></div>
+      <div class="claim"><p class="n">+5 min</p><p>The default detour budget. Any flagged spot it can avoid for five minutes or less, it avoids; the rest it warns about.</p></div>
+      <div class="claim"><p class="n">15% / 30 mi</p><p>The reserve floor, whichever is tighter for your car. No plan counts on going below it.</p></div>
+      <div class="claim"><p class="n">3 trips</p><p>Log three substantial trips and later plans start correcting toward how your car actually drives.</p></div>
     </div>
   </section>
 </div>
@@ -325,362 +188,236 @@
 <div class="wrap">
 <div class="route">
 
-  <!-- 1 -->
   <section class="stop">
-    <p class="eyebrow">Start · the problem</p>
+    <p class="eyebrow">The problem</p>
     <h2>Your car is not the car on the spec sheet</h2>
     <p>
-      A 2021 Model 3 Standard Range Plus was rated at <strong>263 miles</strong>
-      when it left the factory. Five years later the same car does
-      <strong>205</strong>. Batteries lose capacity as they age, and no two cars
-      lose it at the same rate.
+      A 2021 Model 3 Standard Range Plus was rated at <strong>263 miles</strong> new.
+      The one this was built for now shows <strong>205</strong>. Batteries lose capacity
+      with age, and no two lose it at the same rate, so a planner working from the
+      factory figure can hand you a charging stop you won't reach.
     </p>
     <p>
-      Most planners still work from the factory figure. They hand you a route
-      with a charging stop you might not reach. Leeway starts at the other end:
-      you tell it <strong>what your car does at 100% today</strong>, and it works
-      out what will be left when you arrive.
+      Leeway asks what your car does at 100% now and answers with how much room you
+      will have on arrival. That margin is the name.
     </p>
-    <p>
-      Hence the name. What you get back is <strong>how much room you have when
-      you get there</strong>, which tells you more than a yes or a no.
-    </p>
+
+    <div class="calc" id="range">
+      <div class="calc-head">
+        <p class="calc-title" id="calc-title">How far before the reserve floor</p>
+        <p class="calc-sub">Leeway's own range formula and constants (<span class="mono">backend/app/range_model.py</span>), in its flat-road form. Real plans also walk the route's elevation profile, so hills change these numbers.</p>
+      </div>
+      <div class="calc-grid">
+        <div class="ctl">
+          <label>Range your car shows at 100% <b><span id="v-range">205</span> mi</b><input type="range" id="i-range" min="120" max="360" step="5" value="205"></label>
+          <label>Battery when you leave <b><span id="v-start">90</span>%</b><input type="range" id="i-start" min="30" max="100" step="1" value="90"></label>
+          <label>Temperature <b><span id="v-temp">70</span>°F</b><input type="range" id="i-temp" min="0" max="110" step="1" value="70"></label>
+          <label>Headwind (negative is tailwind) <b><span id="v-wind">0</span> mph</b><input type="range" id="i-wind" min="-20" max="30" step="1" value="0"></label>
+          <label>Share of the trip on highway <b><span id="v-hw">80</span>%</b><input type="range" id="i-hw" min="0" max="100" step="5" value="80"></label>
+          <label>Passengers besides you, and suitcases <b><span id="v-load">0 and 0</span></b><input type="range" id="i-pax" min="0" max="4" step="1" value="0" aria-label="Passengers besides the driver"><input type="range" id="i-bags" min="0" max="6" step="1" value="0" aria-label="Suitcases"></label>
+        </div>
+        <div class="out">
+          <div class="out-row">
+            <div><span class="out-n" id="o-you">0</span><span class="out-l">miles to the floor, your car today</span></div>
+            <div><span class="out-n f" id="o-fac">0</span><span class="out-l">if you planned from 263 mi</span></div>
+          </div>
+          <svg id="calc-svg" viewBox="0 0 600 260" role="img" tabindex="0" aria-labelledby="calc-desc"><desc id="calc-desc">Miles to the reserve floor against temperature, for your range and for the factory 263 miles.</desc></svg>
+          <div class="readout" id="calc-read" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="calc-foot">The chart sweeps temperature with everything else held where you set it. Move across it, or focus it and use the arrow keys. Cold costs 0.6% per °F below 60°F, heat 0.3% per °F above 85°F, headwind 0.8% per mph, highway 15%, and a passenger or bag adds 0.8% per 100 lb.</div>
+    </div>
   </section>
 
-  <!-- 2 -->
   <section class="stop">
-    <p class="eyebrow">↓ main screen</p>
-    <h2>What it needs before it can answer</h2>
+    <p class="eyebrow">Main screen</p>
+    <h2>Three inputs before it can answer</h2>
     <p>
-      Three things get you a plan: where you're going, <strong>what your battery
-      reads now</strong>, and <strong>what your car does on a full charge</strong>.
-      The card on the right stays empty until you press Plan this trip. Then it
-      fills with the arrival number, the gauge, and every stop in order.
+      Where you're going, what the battery reads now, and what the car does on a full
+      charge. The verdict card stays empty until you press Plan this trip, then fills
+      with the arrival number, a gauge and every stop in order.
     </p>
     <figure>
-      <img class="shot" src="main-ui.jpg" width="1600" height="870" loading="lazy"
+      <img src="main-ui.jpg" width="1600" height="870" loading="lazy"
         alt="The Leeway main screen: a planning panel on the left over a full-screen map, with an empty verdict card on the right." />
-      <figcaption>The planning panel, the map, and the verdict card waiting to be filled.</figcaption>
+      <figcaption>The planning panel, the map, and the empty verdict card.</figcaption>
     </figure>
   </section>
 
-  <!-- 3 -->
   <section class="stop stop--charge">
-    <p class="eyebrow">↓ a plan</p>
+    <p class="eyebrow">A plan</p>
     <h2>Every stop checked before the plan says yes</h2>
-
-    <p class="verdict-lead">Los Angeles to Santa Barbara, you'll arrive at</p>
-    <div class="bignum">62%</div>
-    <div class="gauge">
-      <div class="gauge-track" role="img" aria-label="Battery gauge showing arrival at 62 percent, well clear of the 15 percent reserve floor">
-        <div class="gauge-fill"></div>
-        <div class="gauge-reserve"></div>
-      </div>
+    <div class="verdict">
+      <p class="lead">Los Angeles to Santa Barbara by way of the Getty: arrive at</p>
+      <p class="bignum">62%</p>
+      <div class="gauge" role="img" aria-label="Battery gauge at 62 percent on arrival, well clear of the 15 percent reserve floor"><div class="fill"></div><div class="floor"></div></div>
       <div class="gauge-scale"><span>0%</span><b>reserve 15%</b><span>100%</span></div>
     </div>
-
-    <p class="after-gauge">
-      That is a 91-mile run by way of the Getty, and the arithmetic behind it is
-      on the card: two stops, 2 h 49 min including about 48 minutes plugged in,
-      <strong>96 miles to spare</strong>, range adjusted for 84°F and calm wind.
-      The verdict line reads <strong>Makeable with your reserve</strong>.
-    </p>
     <p>
-      Under that sit the warnings it found on this route: a
-      <strong>9% grade descent</strong> that runs for a mile, with about
-      <strong>26 real bends</strong> after it, and a Caltrans lane closure on
-      SR-2. It also reports what it already did about them, which was to reroute
-      around two flagged spots for a combined four minutes.
+      A 91-mile run with two stops, 2 h 49 min including about 48 minutes plugged in,
+      <strong>96 miles to spare</strong>, with range adjusted for 84°F and calm wind.
+      The card's verdict line reads "Makeable with your reserve". Under it are the
+      warnings for this route: a <strong>9% grade descent</strong> a mile long with
+      about 26 real bends after it, and a Caltrans lane closure on SR-2. It also says
+      what it already did, which was to reroute around two flagged spots for a
+      combined four minutes.
     </p>
     <figure>
-      <img class="shot" src="route-plan.jpg" width="1600" height="870" loading="lazy"
+      <img src="route-plan.jpg" width="1600" height="870" loading="lazy"
         alt="A planned route from Los Angeles to Santa Barbara with the verdict card reading Makeable with your reserve, arrive at 62 percent, 96 miles of leeway, followed by hazard warnings and the stop itinerary." />
       <figcaption>Arrive at 62%, with the warnings found on this route underneath.</figcaption>
     </figure>
-    <p class="after-gauge">
-      Same job on the other side of the country. New York to Boston, 223 miles,
-      two stops: a Tesla Supercharger in Connecticut and an EVgo outside
-      Worcester, picked from whatever network happens to be there.
+    <p style="margin-top:24px">
+      The same job on the East Coast: New York to Boston, 223 miles, a Tesla
+      Supercharger in Connecticut and an EVgo outside Worcester, picked from whichever
+      network is there.
     </p>
     <figure>
-      <img class="shot" src="plan-northeast.jpg" width="1600" height="875" loading="lazy"
+      <img src="plan-northeast.jpg" width="1600" height="875" loading="lazy"
         alt="A planned route from New York to Boston through Connecticut and Massachusetts, arriving at 54 percent, with a Tesla Supercharger and an EVgo stop marked on the map." />
-      <figcaption>New York → Boston · arrive at 54% · 81 mi of leeway.</figcaption>
+      <figcaption>New York to Boston: arrive at 54%, 81 mi of leeway.</figcaption>
     </figure>
   </section>
 
-  <!-- 4 -->
   <section class="stop stop--flag">
-    <p class="eyebrow">↓ safety</p>
+    <p class="eyebrow">Safety</p>
     <h2>How the avoidance works</h2>
     <p>
-      Four hazards, each with its own switch: <strong>left turns across big
-      roads</strong>, <strong>unsignaled crossings of 4+ lane roads</strong>,
-      <strong>rail crossings</strong>, and <strong>active Caltrans
-      construction</strong> (California only). Next to them sits a <strong>detour budget</strong>.
-      Set it to +5 minutes and Leeway routes around any flagged spot it can avoid
-      for five minutes or less. Anything costlier than that, it warns you about and
-      leaves alone.
+      Four hazards, each with its own switch: <strong>left turns across big roads</strong>,
+      <strong>unsignaled crossings of roads with four or more lanes</strong>,
+      <strong>rail crossings</strong>, and <strong>active Caltrans construction</strong>
+      in California. Beside them is a detour budget: flag only, or +5, +10 or +20
+      minutes. At +5, Leeway routes around any flagged spot it can avoid for five
+      minutes or less and warns about the rest. +5 is the default, so someone who never
+      opens the options is still steered around the cheap ones.
     </p>
     <p>
-      That <strong>+5 is the default</strong>; flag-only is something you have
-      to choose. Someone who never opens the options still gets steered around
-      the hazards that are cheap to avoid.
+      Signals, lane counts and rail crossings come from OpenStreetMap; closures from
+      the Caltrans feed; turn geometry is measured off the route line itself. Steep
+      descents, twisty sections, sun glare and strong wind get a warning and no
+      reroute. When the OpenStreetMap servers are slow, a hazard check gives up rather
+      than hold up the plan, so a flag can go missing.
     </p>
-    <p>
-      Traffic signals, lane counts and rail level crossings come from
-      OpenStreetMap. Closures come from the Caltrans feed. The turn geometry is
-      measured off the route polyline itself. The detour at the top of this page
-      came out of those three.
-    </p>
-    <p>
-      It does not reroute for everything. Steep descents, twisty sections, sun
-      glare and strong wind get a warning and nothing more. And on the days when
-      the OpenStreetMap servers are struggling, a hazard check gives up so it
-      doesn't hold up your plan, which means a flag can go missing.
-    </p>
-    <figure>
-      <img class="shot shot--narrow" src="tab-safety.jpg" width="1000" height="1341" loading="lazy"
+    <figure class="narrow">
+      <img src="tab-safety.jpg" width="745" height="1000" loading="lazy"
         alt="The Safety tab showing a hazard detour budget of Flag only, +5, +10 or +20 minutes, and four toggles for left turns, 4+ lane crossings, rail crossings and Caltrans closures." />
-      <figcaption>Flag only, or spend 5, 10, or 20 minutes avoiding it.</figcaption>
+      <figcaption>Flag only, or spend 5, 10 or 20 minutes avoiding it.</figcaption>
     </figure>
-    <div class="voice">
-      <p><q>For each hazard below: ON = route around it when the detour adds 5 minutes
-        or less, otherwise warn about it. OFF = don't check for it.</q></p>
-      <span class="who">Leeway, explaining itself</span>
-    </div>
   </section>
 
-  <!-- 5 -->
   <section class="stop">
-    <p class="eyebrow">↓ four tabs</p>
+    <p class="eyebrow">Settings</p>
     <h2>The tabs are for when you disagree</h2>
     <p>
-      The defaults are already the cautious answer, so a good plan needs
-      nothing in here touched. Every control states plainly what it does and
-      what it costs you. A collapsed tab shows a <strong>green dot</strong> when
-      something inside it differs from the default, so it can never hide a
-      setting you changed.
+      The defaults are already the cautious answer, so a good plan needs nothing in here
+      touched. Each control says what it does and what it costs. A collapsed tab shows a
+      dot when something inside differs from the default, so a changed setting can't
+      hide.
     </p>
     <div class="panels">
       <figure>
-        <img class="shot" src="tab-charging.jpg" width="1000" height="2044" loading="lazy"
+        <img src="tab-charging.jpg" width="489" height="1000" loading="lazy"
           alt="The Charging tab with charger network chips, charge-to percentage, reserve floor, arrive-with-at-least, and minimum charger speed." />
-        <figcaption><strong>Charging</strong>: networks, charge-to %, reserve floor, arrival minimum, slowest charger you'll accept.</figcaption>
+        <figcaption>Charging: networks, charge-to %, reserve floor, arrival minimum, slowest charger.</figcaption>
       </figure>
       <figure>
-        <img class="shot" src="tab-route.jpg" width="1000" height="1077" loading="lazy"
+        <img src="tab-route.jpg" width="928" height="1000" loading="lazy"
           alt="The Route tab with stops along the way and toggles for toll roads, highways and ferries." />
-        <figcaption><strong>Route</strong>: stops along the way, tolls, highways, ferries.</figcaption>
+        <figcaption>Route: stops, tolls, highways, ferries.</figcaption>
       </figure>
       <figure>
-        <img class="shot" src="tab-trip.jpg" width="1000" height="1527" loading="lazy"
+        <img src="tab-trip.jpg" width="655" height="1000" loading="lazy"
           alt="The Trip tab with passengers, suitcases, departure time, a break-at-least-every slider and a manual temperature toggle." />
-        <figcaption><strong>Trip</strong>: passengers, luggage, departure time, break rhythm, manual temperature.</figcaption>
+        <figcaption>Trip: passengers, luggage, departure time, breaks, temperature.</figcaption>
       </figure>
     </div>
-    <div class="voice">
-      <p><q>80% is the fast-charging sweet spot - above it, charging slows a lot.</q></p>
-      <p><q>No plan will ever count on dipping below this. Lower is braver, not smarter.</q></p>
-      <p><q>Beyond the driver. A full car costs a few percent of range, not a scare number.</q></p>
-      <span class="who">Three of the helper lines, verbatim</span>
-    </div>
+    <blockquote class="said">
+      <p>"No plan will ever count on dipping below this. Lower is braver, not smarter."</p>
+      <cite>Helper text under the reserve floor</cite>
+    </blockquote>
   </section>
 
-  <!-- 6 -->
   <section class="stop">
-    <p class="eyebrow">↓ finding a stop</p>
+    <p class="eyebrow">Finding a stop</p>
     <h2>Ask for a stop in a sentence</h2>
     <p>
-      Type or speak into the bar above the map. <em>"Add an In-N-Out stop after
-      one hour of driving."</em> Leeway reads the sentence, including the budget
-      buried in it. <strong>"Won't add much time" means five minutes.</strong>
-      <strong>"I don't mind a longer detour" means twenty.</strong>
-    </p>
-    <p>
-      Then it prices them. <strong>"adds 4 min"</strong> is a routed figure:
-      Leeway drives you to the door and back out to your destination, then
-      subtracts the trip you were making anyway. Results are ordered by what
-      they cost you. If nothing fits your budget it <strong>says so</strong>
-      instead of quietly widening it.
-    </p>
-    <p>
-      Press add and the place becomes a waypoint in the route list like any
-      other, ready to drag into a different order or drop entirely.
+      Type or speak into the bar above the map: <em>"Add an In-N-Out stop after one hour
+      of driving."</em> Gemini turns the sentence into a search, including the budget
+      buried in it: "won't add much time" means five minutes, "I don't mind a longer
+      detour" means twenty. Each result is priced by routing to the door and on to your
+      destination, minus the drive you were making anyway, and the list is ordered by
+      that cost. If nothing fits the budget it says so instead of widening it.
     </p>
     <figure>
-      <img class="shot" src="voice-search.jpg" width="1600" height="875" loading="lazy"
+      <img src="voice-search.jpg" width="1600" height="874" loading="lazy"
         alt="The search bar with the phrase add a in n out stop after one hour of driving, and a results list of nearby places each showing how many minutes and miles it would add." />
-      <figcaption>Every result priced in minutes added to your drive.</figcaption>
+      <figcaption>Every result priced in minutes added to the drive.</figcaption>
     </figure>
   </section>
 
-  <!-- 7 -->
   <section class="stop">
-    <p class="eyebrow">↓ for the road</p>
-    <h2>For the drive itself</h2>
+    <p class="eyebrow">On the road, and after</p>
+    <h2>A card for the drive, and a question afterwards</h2>
     <p>
-      The trip card cuts the plan down to what you need at a glance behind the
-      wheel. <strong>Leave with 68%.</strong> The Getty at 3 miles. The
-      Supercharger at 60 miles, where you arrive at 25% and charge to 80%. Then
-      28 miles to <strong>arrive at 62%</strong>. The map and the
-      controls are gone, and it fits without scrolling. It is built to be screenshotted, because your car's screen can't
-      open a web app.
+      The trip card cuts the plan to what you need behind the wheel: leave with 68%,
+      the Getty at 3 miles, the Supercharger at 60 miles where you arrive at 25% and
+      charge to 80%, then 28 miles to arrive at 62%. It fits on one screen so it can be
+      screenshotted, because the car's own screen can't open a web app. Any stop can
+      also go out as a maps link, which the Tesla app accepts.
     </p>
     <figure>
-      <img class="shot" src="trip-card.jpg" width="1600" height="867" loading="lazy"
+      <img src="trip-card.jpg" width="1600" height="867" loading="lazy"
         alt="The Leeway trip card: leave with 68 percent, the Getty Museum at 3 miles, a Tesla Supercharger at 60 miles arriving at 25 percent and charging to 80 percent, then 28 miles to arrive at 62 percent." />
-      <figcaption>Everything the drive needs, on one screen that doesn't scroll.</figcaption>
+      <figcaption>Everything the drive needs, on a screen that doesn't scroll.</figcaption>
     </figure>
-    <p>
-      Any single stop can also go out as a maps link, which the Tesla app and
-      most navigation apps accept.
-    </p>
-    <p>
-      The next time you open Leeway it asks <strong>how the trip went</strong>,
-      and puts what happened next to what it promised.
+    <p style="margin-top:24px">
+      Next time you open Leeway it asks how the trip went and sets what happened beside
+      what it predicted. After <strong>three or more trips that each used at least 10%
+      of the battery</strong>, it starts correcting its estimates toward your car,
+      weighting recent trips more. The correction is lopsided on purpose: a car that
+      used more than predicted gets the <strong>full</strong> correction, one that used
+      less gets <strong>half</strong>, and plans never get more than 10% bolder than the
+      stock estimate. When a correction is in use, the plan says so.
     </p>
     <figure>
-      <img class="shot" src="trip-logging.jpg" width="1600" height="869" loading="lazy"
+      <img src="trip-logging.jpg" width="1600" height="868" loading="lazy"
         alt="A dialog asking How did that trip go, showing the predicted arrival and a field for the actual arrival percentage, with the verdict Spot on." />
-      <figcaption>"How did that trip go?" and this one was spot on.</figcaption>
+      <figcaption>"How did that trip go?" This one was spot on.</figcaption>
     </figure>
-    <p>
-      Those answers do more than keep score. After
-      <strong>three or more substantial trips</strong>, Leeway starts correcting
-      its own estimates toward what your car does, weighted toward recent
-      drives and deliberately cautious. A car that turns out hungrier than
-      predicted gets <strong>the full correction</strong>. One that does better
-      gets <strong>half</strong>, and never enough to make a plan bolder than the
-      stock estimate. When that correction is running, the plan says so.
+    <p style="margin-top:24px">
+      Sample trips on a first visit are labeled "try:" so nobody mistakes them for their
+      own history. When the routing quota runs out, the verdict says planning couldn't
+      run instead of echoing your starting battery back as an answer.
     </p>
-    <p>
-      The same care shows up in smaller places. Sample trips are labeled
-      <strong>"try:"</strong> so nobody mistakes them for their own history. When
-      the routing quota runs out, the verdict says planning couldn't run; it
-      won't echo your starting battery back as though it were an answer. A
-      failed search says the search failed, so you don't go hunting for a typo.
-    </p>
-    <div class="voice">
-      <p><q>A suggestion pretending to be your history would be a small lie, and this
-        product doesn't do those.</q></p>
-      <span class="who">From the source, on why sample trips say "try:"</span>
-    </div>
   </section>
 
-  <!-- 8 -->
   <section class="stop">
-    <p class="eyebrow">↓ the rest of it</p>
-    <h2>Sixteen smaller things</h2>
-    <div class="grid">
-      <div class="cell">
-        <h3>Find my real range</h3>
-        <p>Don't know your car's true 100% range? Copy <strong>two numbers</strong> off the car's screen, battery % and the range it shows, and Leeway does the arithmetic. Every reading is dated, so the page doubles as a record of your pack's decline.</p>
-      </div>
-      <div class="cell">
-        <h3>Dark mode</h3>
-        <p>A proper night theme, down to <strong>its own night basemap</strong>.</p>
-      </div>
-      <div class="cell">
-        <h3>Miles or kilometers, °F or °C</h3>
-        <p>Switched <strong>independently</strong>, right on the map.</p>
-      </div>
-      <div class="cell">
-        <h3>Recent trips</h3>
-        <p>Your last routes sit one tap under the address fields. On a first visit you get clearly labeled sample trips instead.</p>
-      </div>
-      <div class="cell">
-        <h3>Route alternatives</h3>
-        <p><strong>"See other routes"</strong> compares whole corridors, I-5 against the 101 against the 99, then replans along whichever you pick.</p>
-      </div>
-      <div class="cell">
-        <h3>Skip a stop</h3>
-        <p>Don't like a charger it chose? <strong>Skip it</strong>, and the plan gets rebuilt around the ones you'll use.</p>
-      </div>
-      <div class="cell">
-        <h3>Stops by hand</h3>
-        <p>Click the map to drop a waypoint anywhere. Drag any point past any other to reorder, start and destination included. <strong>Three stops maximum</strong>, on purpose: past that you're planning a tour.</p>
-      </div>
-      <div class="cell">
-        <h3>Exact house numbers</h3>
-        <p>When the usual geocoder only finds the street, Leeway falls back to the <strong>US Census</strong> one, which can place the number.</p>
-      </div>
-      <div class="cell">
-        <h3>Departure time</h3>
-        <p>Say when you're leaving. The weather becomes <strong>that hour's forecast</strong>, sun glare computes for then, and closures filter to what will still be active.</p>
-      </div>
-      <div class="cell">
-        <h3>Break rhythm</h3>
-        <p><strong>"Break at least every 2h35"</strong> plans stops for the driver as well as the battery, for the trips where the driver runs out first.</p>
-      </div>
-      <div class="cell">
-        <h3>Charger detail on the pin</h3>
-        <p>Hover a stop for its network, <strong>peak kW</strong>, stall count, price where it's known, a photo if one exists, and a link out to Google Maps.</p>
-      </div>
-      <div class="cell">
-        <h3>Color-coded pins</h3>
-        <p>Superchargers are <strong>blue circles</strong>, other fast chargers <strong>orange diamonds</strong>, your own stops gray, hazards <strong>amber triangles</strong> pointing at the spot.</p>
-      </div>
-      <div class="cell">
-        <h3>Accuracy record</h3>
-        <p>Every predicted-versus-actual trip you log, side by side, with <strong>no favorable rounding</strong>. Leeway shows you its own misses.</p>
-      </div>
-      <div class="cell">
-        <h3>Start from where you are</h3>
-        <p>One tap makes your current location the origin, used once and <strong>never stored</strong>.</p>
-      </div>
-      <div class="cell">
-        <h3>Share a stop</h3>
-        <p>Any stop goes out as a maps link, which the <strong>Tesla app</strong> accepts.</p>
-      </div>
-      <div class="cell">
-        <h3>Nothing to sign up for</h3>
-        <p>There is no account, analytics or advertising. Your range, preferences and trip history stay <strong>on your device</strong>.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- 9 -->
-  <section class="stop">
-    <p class="eyebrow">↓ on your phone</p>
-    <h2>Installs on the phone that's coming with you</h2>
-    <p>
-      Leeway is a <strong>progressive web app</strong>. Open it in a phone
-      browser, add it to your home screen, and it launches full screen with its
-      own icon. The phone layout gives the map most of the screen and puts the
-      controls underneath.
-    </p>
-    <p>
-      There is also a <strong>native iOS build</strong>, the same app in a
-      Capacitor shell, which adds three things a website can't do. It schedules a
-      <strong>local reminder</strong> to log how the trip went once you should
-      have arrived. It opens the <strong>native share sheet</strong>, so a
-      charging stop can go straight to your car's app. And it matches the status
-      bar and safe areas to your theme.
-    </p>
-    <p>
-      Leeway makes <strong>no offline claim</strong>, because it could not keep
-      one. Every plan needs live routing, charging and weather data.
-    </p>
-  </section>
-
-  <!-- end -->
-  <section class="stop stop--end">
-    <p class="eyebrow">Arrive · what it's built on</p>
-    <h2>Where the numbers come from</h2>
-    <p>
-      Leeway is free, runs on free infrastructure, and has no business model. It
-      covers the <strong>mainland US</strong>.
-    </p>
+    <p class="eyebrow">Smaller things</p>
+    <h2>The rest of it</h2>
     <dl class="specs">
-      <div class="spec"><dt>Routing</dt><dd>OpenRouteService, for geometry, duration, and the elevation profile the range math runs on</dd></div>
-      <div class="spec"><dt>Chargers</dt><dd>Open Charge Map, for network, connector types, stall counts, power and cost</dd></div>
-      <div class="spec"><dt>Weather</dt><dd>Open-Meteo, for live conditions or the hourly forecast up to 7 days out</dd></div>
-      <div class="spec"><dt>Hazards</dt><dd>OpenStreetMap via Overpass, for traffic signals, lane counts and rail level crossings</dd></div>
-      <div class="spec"><dt>Closures</dt><dd>Caltrans Lane Closure System, for active construction. California only: no other state publishes an equivalent free feed, so the switch does nothing elsewhere</dd></div>
-      <div class="spec"><dt>Addresses</dt><dd>The US Census geocoder, for house numbers the primary geocoder misses</dd></div>
-      <div class="spec"><dt>Stop search</dt><dd>Gemini, to turn a spoken sentence into a search Leeway can run</dd></div>
-      <div class="spec"><dt>Built with</dt><dd>React, TypeScript and MapLibre GL on GitHub Pages; FastAPI on Render; Capacitor for iOS</dd></div>
+      <div><dt>Real range</dt><dd>Don't know your 100% range? Copy the battery % and the range shown off the car's screen and Leeway does the arithmetic. Each reading is dated, so the list doubles as a record of the pack's decline.</dd></div>
+      <div><dt>Alternatives</dt><dd>"See other routes" compares whole corridors (I-5 against the 101 against the 99) and replans along the one you pick. Skip a charger and the plan is rebuilt around the rest.</dd></div>
+      <div><dt>Your own stops</dt><dd>Click the map to drop a waypoint; drag any point to reorder. Three stops at most.</dd></div>
+      <div><dt>Departure time</dt><dd>Weather becomes that hour's forecast, sun glare is computed for then, and closures are filtered to what will still be active. A break rhythm ("at least every 2h35") plans stops for the driver too.</dd></div>
+      <div><dt>Addresses</dt><dd>When the main geocoder only finds the street, the US Census geocoder places the house number.</dd></div>
+      <div><dt>Accuracy record</dt><dd>Every logged trip, predicted against actual, with no favorable rounding.</dd></div>
+      <div><dt>Phone</dt><dd>Installs as a web app from the browser. A native iOS build in a Capacitor shell adds a reminder to log the trip once you should have arrived, and the system share sheet. No offline claim: every plan needs live routing, charging and weather data.</dd></div>
+      <div><dt>Privacy</dt><dd>No account, analytics or advertising. Range, preferences and trip history stay on your device.</dd></div>
+    </dl>
+  </section>
+
+  <section class="stop stop--charge">
+    <p class="eyebrow">Built on</p>
+    <h2>Where the numbers come from</h2>
+    <p>Free, on free infrastructure, covering the mainland US.</p>
+    <dl class="specs">
+      <div><dt>Routing</dt><dd>OpenRouteService: geometry, duration, and the elevation profile the range math walks.</dd></div>
+      <div><dt>Chargers</dt><dd>Open Charge Map: network, connectors, stall counts, power and cost.</dd></div>
+      <div><dt>Weather</dt><dd>Open-Meteo: live conditions, or the hourly forecast up to 7 days out.</dd></div>
+      <div><dt>Hazards</dt><dd>OpenStreetMap via Overpass: signals, lane counts and rail crossings.</dd></div>
+      <div><dt>Closures</dt><dd>Caltrans Lane Closure System. California only; no other state publishes a free equivalent, so the switch does nothing elsewhere.</dd></div>
+      <div><dt>Stop search</dt><dd>Gemini, to turn a sentence into a search.</dd></div>
+      <div><dt>Built with</dt><dd>React, TypeScript and MapLibre GL on GitHub Pages; FastAPI on Render; Capacitor for iOS.</dd></div>
     </dl>
   </section>
 
@@ -690,25 +427,101 @@
 <div class="wrap">
   <section class="close">
     <h2>Find out what's left in the battery</h2>
-    <div class="cta-row">
-      <a class="btn btn-primary" href="../">Plan a trip</a>
-      <a class="textlink" href="https://github.com/lyhjeremy/leeway">or read the code</a>
-    </div>
+    <div class="cta"><a class="btn" href="../">Plan a trip</a><a href="https://github.com/lyhjeremy/leeway">Read the code</a></div>
   </section>
-
   <footer>
-    <p>
-      Leeway. The second opinion before you leave ·
-      <a href="../">App</a> ·
-      <a href="https://github.com/lyhjeremy/leeway">Source</a> ·
-      <a href="../privacy.html">Privacy</a>
-    </p>
-    <p>
-      Map data © OpenStreetMap contributors. Charging data © Open Charge Map
-      contributors. Weather by Open-Meteo. Closures from Caltrans.
-    </p>
+    <p>Leeway · <a href="../">App</a> · <a href="https://github.com/lyhjeremy/leeway">Source</a> · <a href="../privacy.html">Privacy</a></p>
+    <p>Screenshots are captures of the running app. Map data © OpenStreetMap contributors. Charging data © Open Charge Map contributors. Weather by Open-Meteo. Closures from Caltrans.</p>
   </footer>
 </div>
 
+<script>
+(function () {
+  "use strict";
+  // Constants copied from backend/app/range_model.py.
+  var HWY = 0.15, COLD_REF = 60, HOT_REF = 85, COLD = 0.006, HOT = 0.003, WIND = 0.008;
+  var CLAMP_LO = -0.25, CLAMP_HI = 0.5, LOAD = 0.008, PAX_LB = 175, BAG_LB = 50;
+  var RESERVE_PCT = 15, RESERVE_MI = 30, FACTORY = 263;
+  function weather(t, w) {
+    var a = Math.max(0, COLD_REF - t) * COLD + Math.max(0, t - HOT_REF) * HOT + w * WIND;
+    return Math.max(CLAMP_LO, Math.min(CLAMP_HI, a));
+  }
+  function load(p, b) { return LOAD * (p * PAX_LB + b * BAG_LB) / 100; }
+  function toFloor(R, start, hw, adj) {
+    var floor = Math.max(RESERVE_PCT, RESERVE_MI / R * 100);
+    var perMi = (100 / R) * (1 + HWY * hw + adj);
+    return Math.max(0, (start - floor) / perMi);
+  }
+  var $ = function (id) { return document.getElementById(id); };
+  var ids = ["range", "start", "temp", "wind", "hw", "pax", "bags"];
+  var svg = $("calc-svg"), read = $("calc-read"), NS = "http://www.w3.org/2000/svg";
+  if (!svg) return;
+  var cursor = null, W = 600, H = 260;
+  function el(t, a, p) { var e = document.createElementNS(NS, t); for (var k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; }
+  function v(id) { return +$("i-" + id).value; }
+  function r0(x) { return Math.round(x); }
+
+  function draw() {
+    var R = v("range"), S = v("start"), T = v("temp"), Wd = v("wind"), hw = v("hw") / 100, P = v("pax"), B = v("bags");
+    $("v-range").textContent = R; $("v-start").textContent = S; $("v-temp").textContent = T;
+    $("v-wind").textContent = Wd; $("v-hw").textContent = r0(hw * 100);
+    $("v-load").textContent = P + " and " + B;
+    var L = load(P, B);
+    var you = toFloor(R, S, hw, weather(T, Wd) + L), fac = toFloor(FACTORY, S, hw, weather(T, Wd) + L);
+    $("o-you").textContent = r0(you); $("o-fac").textContent = r0(fac);
+    var cold = toFloor(R, S, hw, weather(32, Wd) + L);
+    $("calc-title").textContent = R < FACTORY
+      ? "At " + T + "°F your car reaches its reserve after " + r0(you) + " miles; the factory figure promises " + r0(fac)
+      : "At " + T + "°F your car reaches its reserve after " + r0(you) + " miles, and " + r0(cold) + " at freezing";
+
+    W = Math.max(300, Math.min(760, Math.round(svg.parentNode.clientWidth || 600)));
+    H = W < 480 ? 230 : 260;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    while (svg.lastChild && svg.lastChild.nodeName !== "desc") svg.removeChild(svg.lastChild);
+    var l = 40, r = 10, t = 12, b = 26;
+    var ys = [], tf;
+    for (tf = 0; tf <= 110; tf += 2) ys.push(toFloor(FACTORY, S, hw, weather(tf, Wd) + L), toFloor(R, S, hw, weather(tf, Wd) + L));
+    var top = Math.max(50, Math.ceil(Math.max.apply(null, ys) / 50) * 50);
+    var x = function (f) { return l + f / 110 * (W - l - r); };
+    var y = function (m) { return t + (1 - m / top) * (H - t - b); };
+    var step = top > 200 ? 100 : 50;
+    for (var g = 0; g <= top; g += step) {
+      el("line", { x1: l, x2: W - r, y1: y(g), y2: y(g), "class": "grid" }, svg);
+      el("text", { x: l - 6, y: y(g) + 4, "text-anchor": "end", "class": "tick" }, svg).textContent = g;
+    }
+    [0, 32, 60, 85, 110].forEach(function (f) {
+      el("text", { x: x(f), y: H - 7, "text-anchor": "middle", "class": "tick" }, svg).textContent = f + "°F";
+    });
+    function path(Rr) { var d = ""; for (var f = 0; f <= 110; f += 1) d += (f ? "L" : "M") + x(f).toFixed(1) + " " + y(toFloor(Rr, S, hw, weather(f, Wd) + L)).toFixed(1); return d; }
+    if (R !== FACTORY) el("path", { d: path(FACTORY), "class": "l-fac" }, svg);
+    el("path", { d: path(R), "class": "l-you" }, svg);
+    var lx = W < 480 ? 22 : 18;
+    if (R !== FACTORY) el("text", { x: x(lx), y: y(toFloor(FACTORY, S, hw, weather(lx, Wd) + L)) - 8, "class": "lab-fac", "text-anchor": "middle" }, svg).textContent = "factory " + FACTORY + " mi";
+    el("text", { x: x(lx), y: y(toFloor(R, S, hw, weather(lx, Wd) + L)) + 17, "class": "lab-you", "text-anchor": "middle" }, svg).textContent = "yours, " + R + " mi";
+    var c = cursor == null ? T : cursor;
+    var cy = toFloor(R, S, hw, weather(c, Wd) + L), cf = toFloor(FACTORY, S, hw, weather(c, Wd) + L);
+    el("line", { x1: x(c), x2: x(c), y1: t, y2: H - b, "class": "cur" }, svg);
+    el("circle", { cx: x(c), cy: y(cy), r: 4, fill: "var(--signal)" }, svg);
+    if (R !== FACTORY) el("circle", { cx: x(c), cy: y(cf), r: 4, fill: "var(--paper)", stroke: "var(--signal-2)", "stroke-width": 2 }, svg);
+    read.textContent = "At " + c + "°F: " + r0(cy) + " mi to the floor with your range" +
+      (R !== FACTORY ? ", " + r0(cf) + " mi on the factory figure, a gap of " + r0(cf - cy) + " mi." : ".");
+  }
+  function fromEv(ev) {
+    var rc = svg.getBoundingClientRect(), px = (ev.clientX - rc.left) / rc.width * W;
+    return Math.max(0, Math.min(110, Math.round((px - 40) / (W - 50) * 110)));
+  }
+  svg.addEventListener("pointermove", function (e) { cursor = fromEv(e); draw(); });
+  svg.addEventListener("pointerleave", function () { cursor = null; draw(); });
+  svg.addEventListener("keydown", function (e) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    cursor = Math.max(0, Math.min(110, (cursor == null ? v("temp") : cursor) + (e.key === "ArrowRight" ? 2 : -2)));
+    draw();
+  });
+  ids.forEach(function (id) { $("i-" + id).addEventListener("input", function () { cursor = null; draw(); }); });
+  window.addEventListener("resize", draw);
+  draw();
+})();
+</script>
 </body>
 </html>
