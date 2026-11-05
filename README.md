@@ -54,9 +54,14 @@ The backend reads three keys from the environment. On Render they are set as ser
 | `GEMINI_API_KEY` | Parsing voice and text stop requests (`GEMINI_MODEL` optional) | Natural-language stop search is unavailable |
 
 ```
-cd frontend && npm install && npm run dev
-cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload --port 7861
+cd backend && python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt && uvicorn app.main:app --reload --port 7861
+
+cd frontend && npm install                      # second terminal, from the repo root
+VITE_API_BASE=http://localhost:7861 npm run dev   # app on http://localhost:5173/leeway/
 ```
+
+Without `VITE_API_BASE` the dev frontend calls the deployed Render API. All three keys come from free accounts (openrouteservice.org, openchargemap.org, Google AI Studio).
 
 `GET /api/health` returns the status and a version string that is bumped by hand whenever the backend changes, so a stale deploy is visible. Backend deploy steps (a Render Blueprint from `render.yaml`) are in [`backend/README.md`](backend/README.md).
 
@@ -65,7 +70,7 @@ cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload -
 The backend suite (97 tests) runs fully offline against a faked provider layer: synthetic routes with configurable speed, elevation and highway mix, plus canned stations, weather, OSM and Caltrans data. It covers the range math, every safety-flag detector, the planner end to end including its failure notes, and the provider caches. The frontend's calibration math has its own vitest suite. CI runs both plus lint and build on every push.
 
 ```
-cd backend && python -m pytest tests
+cd backend && pip install pytest && python -m pytest tests   # venv active
 cd frontend && npm test
 ```
 
