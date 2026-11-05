@@ -1,5 +1,7 @@
 # Leeway
 
+[![Tests](https://github.com/lyhjeremy/leeway/actions/workflows/ci.yml/badge.svg)](https://github.com/lyhjeremy/leeway/actions/workflows/ci.yml)
+
 An EV road-trip planner for cars with degraded batteries that also spends a detour budget you set on routing around unprotected left turns, unsignaled crossings of 4+ lane roads and rail crossings.
 
 [Live app](https://lyhjeremy.github.io/leeway/) · [Product overview](https://lyhjeremy.github.io/leeway/overview/) · [API health](https://leeway-api.onrender.com/api/health)
